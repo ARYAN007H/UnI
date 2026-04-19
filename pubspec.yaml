@@ -1,0 +1,31 @@
+name: couple_chat
+description: "A private relationship OS for two"
+publish_to: 'none'
+version: 0.1.0
+
+environment:
+  sdk: ^3.7.2
+
+dependencies:
+  cached_network_image: ^3.4.1
+  flutter:
+    sdk: flutter
+  flutter_animate: ^4.5.2
+  flutter_svg: ^2.2.2
+  google_fonts: ^6.3.2
+  image_picker: ^1.2.1
+  intl: ^0.20.2
+  path_provider: ^2.1.5
+  shared_preferences: ^2.5.3
+  shimmer: ^3.0.0
+  supabase_flutter: ^2.12.4
+  timeago: ^3.7.1
+  uuid: ^4.5.3
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+
+flutter:
+  uses-material-design: true
