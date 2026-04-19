@@ -1,8 +1,10 @@
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+
 /// Supabase project configuration.
-/// Replace these with your own Supabase project URL and anon key.
+/// Loaded from .env file.
 class SupabaseConfig {
-  static const String url = 'https://YOUR_PROJECT.supabase.co';
-  static const String anonKey = 'YOUR_ANON_KEY';
+  static String get url => dotenv.env['SUPABASE_URL'] ?? '';
+  static String get anonKey => dotenv.env['SUPABASE_ANON_KEY'] ?? '';
 
   /// Default channels seeded for every new couple
   static const List<Map<String, String>> defaultChannels = [

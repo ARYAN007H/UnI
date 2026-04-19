@@ -14,12 +14,12 @@ class TypingIndicatorWidget extends StatelessWidget {
       decoration: BoxDecoration(
         color: AppTheme.receivedBubbleColor,
         borderRadius: const BorderRadius.only(
-          topLeft: Radius.circular(18),
-          topRight: Radius.circular(18),
-          bottomLeft: Radius.circular(4),
-          bottomRight: Radius.circular(18),
+          topLeft: Radius.circular(20),
+          topRight: Radius.circular(20),
+          bottomLeft: Radius.circular(6),
+          bottomRight: Radius.circular(20),
         ),
-        border: Border.all(color: AppTheme.outline.withValues(alpha: 0.15)),
+        border: Border.all(color: AppTheme.outline.withValues(alpha: 0.1)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -28,7 +28,7 @@ class TypingIndicatorWidget extends StatelessWidget {
             '$name is typing',
             style: TextStyle(
               fontSize: 12,
-              color: AppTheme.onSurfaceVariant.withValues(alpha: 0.7),
+              color: AppTheme.onSurfaceVariant.withValues(alpha: 0.6),
               fontStyle: FontStyle.italic,
             ),
           ),
@@ -36,7 +36,7 @@ class TypingIndicatorWidget extends StatelessWidget {
           _buildDots(),
         ],
       ),
-    ).animate().fadeIn(duration: 300.ms).slideY(begin: 0.3, end: 0);
+    ).animate().fadeIn(duration: 300.ms).slideY(begin: 0.2, end: 0);
   }
 
   Widget _buildDots() {
@@ -49,13 +49,13 @@ class TypingIndicatorWidget extends StatelessWidget {
           height: 5,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            color: AppTheme.primary.withValues(alpha: 0.7),
+            color: AppTheme.secondary.withValues(alpha: 0.7),
           ),
         )
             .animate(onPlay: (c) => c.repeat(reverse: true))
             .scale(
               begin: const Offset(1, 1),
-              end: const Offset(1.4, 1.4),
+              end: const Offset(1.5, 1.5),
               duration: 600.ms,
               delay: Duration(milliseconds: i * 150),
               curve: Curves.easeInOut,

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'config/supabase_config.dart';
 import 'config/theme.dart';
 import 'services/auth_service.dart';
@@ -12,13 +13,15 @@ import 'screens/home/home_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  
+  await dotenv.load(fileName: ".env");
 
-  // Set system UI overlay style for immersive dark mode
+  // Immersive warm dark system UI
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
       statusBarIconBrightness: Brightness.light,
-      systemNavigationBarColor: Color(0xFF0F0F1A),
+      systemNavigationBarColor: Color(0xFF131118),
       systemNavigationBarIconBrightness: Brightness.light,
     ),
   );
@@ -28,17 +31,17 @@ void main() async {
     anonKey: SupabaseConfig.anonKey,
   );
 
-  runApp(const CoupleChat());
+  runApp(const UAndI());
 }
 
-class CoupleChat extends StatefulWidget {
-  const CoupleChat({super.key});
+class UAndI extends StatefulWidget {
+  const UAndI({super.key});
 
   @override
-  State<CoupleChat> createState() => _CoupleChatState();
+  State<UAndI> createState() => _UAndIState();
 }
 
-class _CoupleChatState extends State<CoupleChat> {
+class _UAndIState extends State<UAndI> {
   late final AuthService _authService;
   late final ChatService _chatService;
   late final PresenceService _presenceService;
@@ -49,8 +52,6 @@ class _CoupleChatState extends State<CoupleChat> {
     _authService = AuthService();
     _chatService = ChatService();
     _presenceService = PresenceService();
-
-    // When auth state changes, initialize chat & presence if paired
     _authService.addListener(_onAuthChanged);
   }
 
@@ -80,7 +81,7 @@ class _CoupleChatState extends State<CoupleChat> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Couple Chat',
+      title: 'U&i',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.darkTheme,
       home: ListenableBuilder(
@@ -89,15 +90,12 @@ class _CoupleChatState extends State<CoupleChat> {
           if (_authService.loading) {
             return const _SplashScreen();
           }
-
           if (!_authService.isLoggedIn) {
             return LoginScreen(authService: _authService);
           }
-
           if (_authService.couple == null) {
             return PairScreen(authService: _authService);
           }
-
           return HomeScreen(
             authService: _authService,
             chatService: _chatService,
@@ -109,6 +107,7 @@ class _CoupleChatState extends State<CoupleChat> {
   }
 }
 
+// ── Splash Screen ────────────────────────────────────────────
 class _SplashScreen extends StatelessWidget {
   const _SplashScreen();
 
@@ -121,10 +120,10 @@ class _SplashScreen extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Animated heart icon
+              // Warm pulsing heart
               TweenAnimationBuilder<double>(
-                tween: Tween(begin: 0.8, end: 1.0),
-                duration: const Duration(milliseconds: 800),
+                tween: Tween(begin: 0.85, end: 1.0),
+                duration: const Duration(milliseconds: 1200),
                 curve: Curves.easeInOut,
                 builder: (context, value, child) {
                   return Transform.scale(
@@ -132,30 +131,54 @@ class _SplashScreen extends StatelessWidget {
                     child: child,
                   );
                 },
-                child: ShaderMask(
-                  shaderCallback: (bounds) =>
-                      AppTheme.primaryGradient.createShader(bounds),
+                child: Container(
+                  width: 88,
+                  height: 88,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: AppTheme.primaryGradient,
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppTheme.primary.withValues(alpha: 0.35),
+                        blurRadius: 40,
+                        spreadRadius: 8,
+                      ),
+                    ],
+                  ),
                   child: const Icon(
                     Icons.favorite_rounded,
-                    size: 64,
+                    size: 44,
                     color: Colors.white,
                   ),
                 ),
               ),
-              const SizedBox(height: 24),
+              const SizedBox(height: 28),
+              ShaderMask(
+                shaderCallback: (bounds) =>
+                    AppTheme.primaryGradient.createShader(bounds),
+                child: Text(
+                  'U&i',
+                  style: Theme.of(context).textTheme.displayLarge?.copyWith(
+                        fontWeight: FontWeight.w800,
+                        color: Colors.white,
+                        letterSpacing: -1,
+                      ),
+                ),
+              ),
+              const SizedBox(height: 8),
               Text(
-                'Couple Chat',
-                style: Theme.of(context).textTheme.headlineLarge?.copyWith(
-                      fontWeight: FontWeight.w700,
+                'Your private space together',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: AppTheme.onSurfaceVariant,
                     ),
               ),
-              const SizedBox(height: 32),
+              const SizedBox(height: 40),
               SizedBox(
                 width: 24,
                 height: 24,
                 child: CircularProgressIndicator(
                   strokeWidth: 2.5,
-                  color: AppTheme.primary,
+                  color: AppTheme.primary.withValues(alpha: 0.6),
                 ),
               ),
             ],
