@@ -3,12 +3,14 @@
 set -e
 
 echo "Installing Flutter..."
-if [ ! -d "flutter" ]; then
-  git clone https://github.com/flutter/flutter.git -b stable --depth 1
+if [ ! -f ".flutter-sdk/bin/flutter" ]; then
+  echo "Downloading Flutter SDK..."
+  rm -rf .flutter-sdk
+  git clone https://github.com/flutter/flutter.git -b stable --depth 1 .flutter-sdk
 else
-  echo "Flutter directory already exists."
+  echo "Flutter SDK already exists."
 fi
-export PATH="$PATH:`pwd`/flutter/bin"
+export PATH="$PATH:`pwd`/.flutter-sdk/bin"
 
 echo "Flutter version:"
 flutter --version
