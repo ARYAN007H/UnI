@@ -93,6 +93,30 @@ class AuthService extends ChangeNotifier {
 
       if (profileData != null) {
         _profile = Profile.fromJson(profileData);
+      } else {
+        // Safety net: auto-create profile if auth user exists but profile row is missing.
+        // This can happen if the signup profile insert failed (RLS, network, etc).
+        final email = currentUser!.email ?? '';
+        final fallbackName = email.split('@').first;
+        try {
+          await _client.from('profiles').insert({
+            'id': userId,
+            'username': fallbackName.toLowerCase().replaceAll(RegExp(r'[^a-z0-9_]'), ''),
+            'display_name': fallbackName,
+            'email_verified': false,
+          });
+          // Re-fetch the newly created profile
+          final newProfile = await _client
+              .from('profiles')
+              .select()
+              .eq('id', userId)
+              .maybeSingle();
+          if (newProfile != null) {
+            _profile = Profile.fromJson(newProfile);
+          }
+        } catch (e) {
+          debugPrint('Error auto-creating profile: $e');
+        }
       }
 
       // Load couple
@@ -140,12 +164,18 @@ class AuthService extends ChangeNotifier {
 
     if (response.user != null) {
       // Create profile with email_verified = false
-      await _client.from('profiles').insert({
-        'id': response.user!.id,
-        'username': username.toLowerCase().trim(),
-        'display_name': displayName.trim(),
-        'email_verified': false,
-      });
+      // Use upsert to handle cases where the profile row may already exist
+      try {
+        await _client.from('profiles').upsert({
+          'id': response.user!.id,
+          'username': username.toLowerCase().trim(),
+          'display_name': displayName.trim(),
+          'email_verified': false,
+        });
+      } catch (e) {
+        // If profile creation fails, loadUserData's safety net will retry
+        debugPrint('Profile creation during signup failed (will retry): $e');
+      }
 
       _justSignedUp = true;
       await loadUserData();
