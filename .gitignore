@@ -45,5 +45,9 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 
+# Flutter SDK (do NOT track as submodule)
+flutter/
+.flutter-sdk/
+
 # Environment variables
 .env
