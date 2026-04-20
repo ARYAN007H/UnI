@@ -13,8 +13,11 @@ export PATH="$PATH:`pwd`/flutter/bin"
 echo "Flutter version:"
 flutter --version
 
+echo "Enabling Flutter Web..."
+flutter config --enable-web
+
 echo "Running Flutter pub get..."
 flutter pub get
 
-echo "Building Flutter Web..."
-flutter build web --release
+echo "Building Flutter Web with WebAssembly..."
+flutter build web --wasm --release
