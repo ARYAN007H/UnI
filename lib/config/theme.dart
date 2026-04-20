@@ -15,7 +15,7 @@ class AppTheme {
   static Color _secondary = const Color(0xFFFFAD5A);
   static Color _secondaryLight = const Color(0xFFFFD4A8);
   static Color _tertiary = const Color(0xFFFFD93D);
-  static Color _accent = const Color(0xFFE8B4B8);
+  static const Color _accent = Color(0xFFE8B4B8);
   static Color _sentBubble = const Color(0xFF3D2028);
   
   // Static Core

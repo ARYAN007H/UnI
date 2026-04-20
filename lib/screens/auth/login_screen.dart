@@ -325,7 +325,7 @@ class _LoginScreenState extends State<LoginScreen>
                 },
                 child: Container(
                   height: 400,
-                  decoration: const BoxDecoration(
+                  decoration: BoxDecoration(
                     gradient: AppTheme.warmRadialGlow,
                   ),
                 ),

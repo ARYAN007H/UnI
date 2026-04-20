@@ -86,7 +86,7 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen>
                 },
                 child: Container(
                   height: 350,
-                  decoration: const BoxDecoration(
+                  decoration: BoxDecoration(
                     gradient: AppTheme.warmRadialGlow,
                   ),
                 ),

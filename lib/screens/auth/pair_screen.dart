@@ -69,7 +69,7 @@ class _PairScreenState extends State<PairScreen> {
               right: 0,
               child: Container(
                 height: 300,
-                decoration: const BoxDecoration(gradient: AppTheme.warmRadialGlow),
+                decoration: BoxDecoration(gradient: AppTheme.warmRadialGlow),
               ),
             ),
             SafeArea(
