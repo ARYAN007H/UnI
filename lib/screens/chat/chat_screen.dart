@@ -280,6 +280,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                               showAvatar: showAvatar,
                               partnerProfile:
                                   widget.authService.partnerProfile,
+                              isVanillaMode:
+                                  widget.authService.couple?.isVanillaMode ?? false,
                               onReply: () =>
                                   setState(() => _replyToId = msg.id),
                               onDelete: isMine
@@ -308,6 +310,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                       name: widget.authService.partnerProfile
                               ?.displayName ??
                           'Partner',
+                      isVanillaMode:
+                          widget.authService.couple?.isVanillaMode ?? false,
                     ),
                   ),
                 );

@@ -100,6 +100,8 @@ class Couple {
   final DateTime? anniversaryDate;
   final String? coupleName;
   final String? inviteCode;
+  final bool isVanillaMode;
+  final String themeColorHex;
 
   const Couple({
     required this.id,
@@ -109,6 +111,8 @@ class Couple {
     this.anniversaryDate,
     this.coupleName,
     this.inviteCode,
+    this.isVanillaMode = false,
+    this.themeColorHex = '#FFFF6B6B',
   });
 
   factory Couple.fromJson(Map<String, dynamic> json) {
@@ -122,11 +126,32 @@ class Couple {
           : null,
       coupleName: json['couple_name'] as String?,
       inviteCode: json['invite_code'] as String?,
+      isVanillaMode: json['is_vanilla_mode'] as bool? ?? false,
+      themeColorHex: json['theme_color_hex'] as String? ?? '#FFFF6B6B',
     );
   }
 
   /// Returns the partner's ID given the current user's ID.
   String partnerId(String myId) => myId == user1 ? user2 : user1;
+
+  Couple copyWith({
+    String? coupleName,
+    String? inviteCode,
+    bool? isVanillaMode,
+    String? themeColorHex,
+  }) {
+    return Couple(
+      id: id,
+      user1: user1,
+      user2: user2,
+      pairedAt: pairedAt,
+      anniversaryDate: anniversaryDate,
+      coupleName: coupleName ?? this.coupleName,
+      inviteCode: inviteCode ?? this.inviteCode,
+      isVanillaMode: isVanillaMode ?? this.isVanillaMode,
+      themeColorHex: themeColorHex ?? this.themeColorHex,
+    );
+  }
 }
 
 class Channel {

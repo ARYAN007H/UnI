@@ -81,34 +81,43 @@ class _UAndIState extends State<UAndI> {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'U&i',
-      debugShowCheckedModeBanner: false,
-      theme: AppTheme.darkTheme,
-      home: ListenableBuilder(
-        listenable: _authService,
-        builder: (context, _) {
-          if (_authService.loading) {
-            return const _SplashScreen();
-          }
-          if (!_authService.isLoggedIn) {
-            return LoginScreen(authService: _authService);
-          }
-          // Enforce email verification after 24-hour grace period
-          if (!_authService.isEmailVerified &&
-              _authService.isGracePeriodExpired) {
-            return VerifyEmailScreen(authService: _authService);
-          }
-          if (_authService.couple == null) {
-            return PairScreen(authService: _authService);
-          }
-          return HomeScreen(
-            authService: _authService,
-            chatService: _chatService,
-            presenceService: _presenceService,
-          );
-        },
-      ),
+    return ListenableBuilder(
+      listenable: _authService,
+      builder: (context, _) {
+        // Initialize theme before building the app
+        if (_authService.couple != null) {
+          AppTheme.initializeTheme(_authService.couple!.themeColorHex);
+        }
+
+        return MaterialApp(
+          title: 'U&i',
+          debugShowCheckedModeBanner: false,
+          theme: AppTheme.darkTheme,
+          home: Builder(
+            builder: (context) {
+              if (_authService.loading) {
+                return const _SplashScreen();
+              }
+              if (!_authService.isLoggedIn) {
+                return LoginScreen(authService: _authService);
+              }
+              // Enforce email verification after 24-hour grace period
+              if (!_authService.isEmailVerified &&
+                  _authService.isGracePeriodExpired) {
+                return VerifyEmailScreen(authService: _authService);
+              }
+              if (_authService.couple == null) {
+                return PairScreen(authService: _authService);
+              }
+              return HomeScreen(
+                authService: _authService,
+                chatService: _chatService,
+                presenceService: _presenceService,
+              );
+            },
+          ),
+        );
+      },
     );
   }
 }

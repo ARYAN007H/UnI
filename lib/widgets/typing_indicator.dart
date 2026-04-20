@@ -1,11 +1,17 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../config/theme.dart';
 
 class TypingIndicatorWidget extends StatelessWidget {
   final String name;
+  final bool isVanillaMode;
 
-  const TypingIndicatorWidget({super.key, required this.name});
+  const TypingIndicatorWidget({
+    super.key,
+    required this.name,
+    this.isVanillaMode = false,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -32,8 +38,8 @@ class TypingIndicatorWidget extends StatelessWidget {
               fontStyle: FontStyle.italic,
             ),
           ),
-          const SizedBox(width: 6),
-          _buildDots(),
+          const SizedBox(width: 8),
+          isVanillaMode ? _buildDots() : _buildHeartbeat(),
         ],
       ),
     ).animate().fadeIn(duration: 300.ms).slideY(begin: 0.2, end: 0);
@@ -66,5 +72,46 @@ class TypingIndicatorWidget extends StatelessWidget {
             );
       }),
     );
+  }
+
+  Widget _buildHeartbeat() {
+    return Container(
+      width: 8,
+      height: 8,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: AppTheme.secondary,
+        boxShadow: [
+          BoxShadow(
+            color: AppTheme.secondary.withValues(alpha: 0.5),
+            blurRadius: 6,
+            spreadRadius: 2,
+          ),
+        ],
+      ),
+    )
+        .animate(
+          onPlay: (c) => c.repeat(reverse: true),
+        )
+        // 60-70 BPM is approx 1 pulse every ~900ms.
+        // We use an easeInOut curve for smooth systolic/diastolic feeling.
+        .scale(
+          begin: const Offset(1.0, 1.0),
+          end: const Offset(1.6, 1.6),
+          duration: 450.ms,
+          curve: Curves.easeInOutSine,
+        )
+        .fade(
+          begin: 0.6,
+          end: 1.0,
+          duration: 450.ms,
+        )
+        .listen(
+          callback: (value) {
+            // value goes from 0 to 1 and back. Fire light haptic near peak (val > 0.95)
+            // But doing it on every frame is bad, so we'd need a custom controller to fire exactly once per peak.
+            // Since we're using a simple loop, we'll avoid spamming haptics here, but we can do it with a custom ticker if needed.
+          },
+        );
   }
 }

@@ -1,58 +1,99 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-/// Warm Sunset V2 — Premium dark theme with coral, amber & rose-gold accents.
+/// Dynamic Theme System — Vibe Coding V2
 class AppTheme {
   AppTheme._();
 
-  // ── Core Palette ──────────────────────────────────────────────
-  static const Color _primary = Color(0xFFFF6B6B);           // Passionate coral
-  static const Color _primaryLight = Color(0xFFFF8E8E);       // Soft coral
-  static const Color _primaryDark = Color(0xFFCC4444);        // Deep coral
-  static const Color _secondary = Color(0xFFFFAD5A);          // Golden amber
-  static const Color _secondaryLight = Color(0xFFFFD4A8);     // Cream amber
-  static const Color _tertiary = Color(0xFFFFD93D);           // Sunny gold
-  static const Color _accent = Color(0xFFE8B4B8);             // Rose-gold
-  static const Color _surface = Color(0xFF131118);            // Deep warm dark
-  static const Color _surfaceContainer = Color(0xFF1C1A24);   // Elevated dark
-  static const Color _surfaceContainerHigh = Color(0xFF262433);// Card bg
-  static const Color _surfaceContainerHighest = Color(0xFF302E3E); // Higher
-  static const Color _onSurface = Color(0xFFF5F0EB);          // Warm white
-  static const Color _onSurfaceVariant = Color(0xFF9E97AB);   // Muted warm gray
-  static const Color _outline = Color(0xFF3D3848);            // Warm outline
-  static const Color _outlineVariant = Color(0xFF2A2635);     // Subtle outline
-  static const Color _error = Color(0xFFFF6B6B);              // Coral error
-  static const Color _success = Color(0xFF6BCB77);            // Warm green
-  static const Color _sentBubble = Color(0xFF3D2028);         // Dark coral tint
-  static const Color _receivedBubble = Color(0xFF1E1C28);     // Dark warm
+  // Default seed color (Passionate Coral)
+  static Color _seed = const Color(0xFFFF6B6B);
+
+  // ── Mutable Palette ──────────────────────────────────────────────
+  static Color _primary = _seed;
+  static Color _primaryLight = _seed.withValues(alpha: 0.8);
+  static Color _primaryDark = _seed.withValues(alpha: 1.0); // We will compute this
+  static Color _secondary = const Color(0xFFFFAD5A);
+  static Color _secondaryLight = const Color(0xFFFFD4A8);
+  static Color _tertiary = const Color(0xFFFFD93D);
+  static Color _accent = const Color(0xFFE8B4B8);
+  static Color _sentBubble = const Color(0xFF3D2028);
+  
+  // Static Core
+  static const Color _surface = Color(0xFF131118);
+  static const Color _surfaceContainer = Color(0xFF1C1A24);
+  static const Color _surfaceContainerHigh = Color(0xFF262433);
+  static const Color _surfaceContainerHighest = Color(0xFF302E3E);
+  static const Color _onSurface = Color(0xFFF5F0EB);
+  static const Color _onSurfaceVariant = Color(0xFF9E97AB);
+  static const Color _outline = Color(0xFF3D3848);
+  static const Color _outlineVariant = Color(0xFF2A2635);
+  static const Color _error = Color(0xFFFF6B6B);
+  static const Color _success = Color(0xFF6BCB77);
+  static const Color _receivedBubble = Color(0xFF1E1C28);
+
+  // ── Initialization / Theming Engine ───────────────────────
+  static void initializeTheme(String hexColor) {
+    if (hexColor.isEmpty) return;
+    
+    // Parse hex
+    hexColor = hexColor.replaceAll('#', '');
+    if (hexColor.length == 6) {
+      hexColor = 'FF$hexColor';
+    }
+    
+    try {
+      _seed = Color(int.parse(hexColor, radix: 16));
+      _recalculateColors();
+    } catch (e) {
+      debugPrint("Invalid theme color: $hexColor");
+    }
+  }
+
+  static void _recalculateColors() {
+    final hsl = HSLColor.fromColor(_seed);
+    
+    _primary = _seed;
+    _primaryLight = hsl.withLightness((hsl.lightness + 0.1).clamp(0.0, 1.0)).toColor();
+    _primaryDark = hsl.withLightness((hsl.lightness - 0.15).clamp(0.0, 1.0)).toColor();
+    
+    // Secondary is +45 degrees on the color wheel (analogous)
+    _secondary = hsl.withHue((hsl.hue + 45) % 360).toColor();
+    _secondaryLight = HSLColor.fromColor(_secondary).withLightness(0.8).toColor();
+    
+    // Tertiary is +90 degrees
+    _tertiary = hsl.withHue((hsl.hue + 90) % 360).toColor();
+    
+    // Sent bubble is a dark variant of primary
+    _sentBubble = hsl.withLightness(0.18).withSaturation(0.4).toColor();
+  }
 
   // ── Gradients ──────────────────────────────────────────────
-  static const LinearGradient primaryGradient = LinearGradient(
-    colors: [Color(0xFFFF6B6B), Color(0xFFFFAD5A)],
+  static LinearGradient get primaryGradient => LinearGradient(
+    colors: [_primary, _secondary],
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
   );
 
-  static const LinearGradient warmGlow = LinearGradient(
-    colors: [Color(0xFFFF6B6B), Color(0xFFFF8E8E), Color(0xFFFFAD5A)],
+  static LinearGradient get warmGlow => LinearGradient(
+    colors: [_primary, _primaryLight, _secondary],
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
   );
 
   static const LinearGradient surfaceGradient = LinearGradient(
-    colors: [Color(0xFF131118), Color(0xFF1C1A24)],
+    colors: [_surface, _surfaceContainer],
     begin: Alignment.topCenter,
     end: Alignment.bottomCenter,
   );
 
-  static const LinearGradient sentBubbleGradient = LinearGradient(
-    colors: [Color(0xFF4A2030), Color(0xFF3D2028)],
+  static LinearGradient get sentBubbleGradient => LinearGradient(
+    colors: [_sentBubble.withValues(alpha: 0.8), _sentBubble],
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
   );
 
-  static const RadialGradient warmRadialGlow = RadialGradient(
-    colors: [Color(0x22FF6B6B), Color(0x00FF6B6B)],
+  static RadialGradient get warmRadialGlow => RadialGradient(
+    colors: [_primary.withValues(alpha: 0.15), _primary.withValues(alpha: 0.0)],
     radius: 0.8,
   );
 
@@ -75,6 +116,7 @@ class AppTheme {
   static Color get sentBubbleColor => _sentBubble;
   static Color get receivedBubbleColor => _receivedBubble;
   static Color get success => _success;
+  static Color get error => _error;
 
   // ── Typography ─────────────────────────────────────────────
   static TextTheme get _textTheme {
@@ -102,7 +144,7 @@ class AppTheme {
       primary: _primary,
       primaryContainer: _sentBubble,
       secondary: _secondary,
-      secondaryContainer: const Color(0xFF3D3020),
+      secondaryContainer: _surfaceContainerHigh,
       tertiary: _tertiary,
       surface: _surface,
       surfaceContainer: _surfaceContainer,
@@ -192,7 +234,6 @@ class AppTheme {
 
   // ── Helpers ────────────────────────────────────────────────
 
-  /// Builds a warm glowing box decoration for cards.
   static BoxDecoration glassCard({
     double opacity = 0.6,
     double borderOpacity = 0.2,
@@ -205,7 +246,6 @@ class AppTheme {
     );
   }
 
-  /// Gradient button decoration.
   static BoxDecoration gradientButton({double radius = 16}) {
     return BoxDecoration(
       gradient: primaryGradient,

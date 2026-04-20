@@ -303,4 +303,42 @@ class AuthService extends ChangeNotifier {
 
     await _client.from('channels').insert(channels);
   }
+
+  /// Toggle Vanilla Mode (Stealth Mode) for the couple.
+  Future<void> toggleVanillaMode(bool isVanilla) async {
+    if (_couple == null) return;
+    
+    try {
+      await _client.from('couples').update({
+        'is_vanilla_mode': isVanilla,
+      }).eq('id', _couple!.id);
+      
+      // Update local state optimistic
+      _couple = _couple!.copyWith(isVanillaMode: isVanilla);
+      notifyListeners();
+      
+      // Reload fully to ensure sync
+      await loadUserData();
+    } catch (e) {
+      debugPrint('Error toggling vanilla mode: $e');
+    }
+  }
+
+  /// Update the global theme color for the couple
+  Future<void> updateThemeColor(String hex) async {
+    if (_couple == null) return;
+    
+    try {
+      await _client.from('couples').update({
+        'theme_color_hex': hex,
+      }).eq('id', _couple!.id);
+      
+      // Update local state optimistic
+      _couple = _couple!.copyWith(themeColorHex: hex);
+      notifyListeners();
+      
+    } catch (e) {
+      debugPrint('Error updating theme color: $e');
+    }
+  }
 }
