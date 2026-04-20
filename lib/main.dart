@@ -9,6 +9,7 @@ import 'services/chat_service.dart';
 import 'services/presence_service.dart';
 import 'screens/auth/login_screen.dart';
 import 'screens/auth/pair_screen.dart';
+import 'screens/auth/verify_email_screen.dart';
 import 'screens/home/home_screen.dart';
 
 void main() async {
@@ -92,6 +93,11 @@ class _UAndIState extends State<UAndI> {
           }
           if (!_authService.isLoggedIn) {
             return LoginScreen(authService: _authService);
+          }
+          // Enforce email verification after 24-hour grace period
+          if (!_authService.isEmailVerified &&
+              _authService.isGracePeriodExpired) {
+            return VerifyEmailScreen(authService: _authService);
           }
           if (_authService.couple == null) {
             return PairScreen(authService: _authService);

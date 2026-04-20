@@ -10,6 +10,8 @@ class Profile {
   final bool isOnline;
   final DateTime? lastSeen;
   final DateTime createdAt;
+  final bool emailVerified;
+  final DateTime? emailVerifiedAt;
 
   const Profile({
     required this.id,
@@ -20,6 +22,8 @@ class Profile {
     this.isOnline = false,
     this.lastSeen,
     required this.createdAt,
+    this.emailVerified = false,
+    this.emailVerifiedAt,
   });
 
   factory Profile.fromJson(Map<String, dynamic> json) {
@@ -32,6 +36,8 @@ class Profile {
       isOnline: json['is_online'] as bool? ?? false,
       lastSeen: json['last_seen'] != null ? DateTime.parse(json['last_seen'] as String) : null,
       createdAt: DateTime.parse(json['created_at'] as String),
+      emailVerified: json['email_verified'] as bool? ?? false,
+      emailVerifiedAt: json['email_verified_at'] != null ? DateTime.parse(json['email_verified_at'] as String) : null,
     );
   }
 
@@ -44,7 +50,22 @@ class Profile {
         'is_online': isOnline,
         'last_seen': lastSeen?.toIso8601String(),
         'created_at': createdAt.toIso8601String(),
+        'email_verified': emailVerified,
+        'email_verified_at': emailVerifiedAt?.toIso8601String(),
       };
+
+  /// Whether the 24-hour grace period has expired without verification.
+  bool get isGracePeriodExpired {
+    if (emailVerified) return false;
+    return DateTime.now().difference(createdAt).inHours >= 24;
+  }
+
+  /// Remaining duration in the grace period.
+  Duration get gracePeriodRemaining {
+    final elapsed = DateTime.now().difference(createdAt);
+    final remaining = const Duration(hours: 24) - elapsed;
+    return remaining.isNegative ? Duration.zero : remaining;
+  }
 
   Profile copyWith({
     String? username,
@@ -53,6 +74,8 @@ class Profile {
     String? statusText,
     bool? isOnline,
     DateTime? lastSeen,
+    bool? emailVerified,
+    DateTime? emailVerifiedAt,
   }) {
     return Profile(
       id: id,
@@ -63,6 +86,8 @@ class Profile {
       isOnline: isOnline ?? this.isOnline,
       lastSeen: lastSeen ?? this.lastSeen,
       createdAt: createdAt,
+      emailVerified: emailVerified ?? this.emailVerified,
+      emailVerifiedAt: emailVerifiedAt ?? this.emailVerifiedAt,
     );
   }
 }

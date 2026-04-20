@@ -31,6 +31,9 @@ class HomeScreen extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _buildHeader(context),
+              // Email verification reminder banner
+              if (!authService.isEmailVerified)
+                _buildVerificationBanner(context),
               const SizedBox(height: 12),
               _buildPartnerCard(context),
               const SizedBox(height: 6),
@@ -55,6 +58,108 @@ class HomeScreen extends StatelessWidget {
       ),
       floatingActionButton: _buildFab(context),
     );
+  }
+
+  Widget _buildVerificationBanner(BuildContext context) {
+    final remaining = authService.profile?.gracePeriodRemaining ?? Duration.zero;
+    final hours = remaining.inHours;
+    final timeLabel = hours > 0 ? '${hours}h left' : 'Expiring soon';
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [
+              AppTheme.secondary.withValues(alpha: 0.12),
+              AppTheme.primary.withValues(alpha: 0.08),
+            ],
+          ),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: AppTheme.secondary.withValues(alpha: 0.2),
+          ),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 32,
+              height: 32,
+              decoration: BoxDecoration(
+                color: AppTheme.secondary.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(
+                Icons.mail_outline_rounded,
+                size: 18,
+                color: AppTheme.secondary,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Verify your email',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: AppTheme.onSurface,
+                          fontWeight: FontWeight.w600,
+                        ),
+                  ),
+                  Text(
+                    timeLabel,
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                          color: AppTheme.secondary,
+                          fontWeight: FontWeight.w500,
+                        ),
+                  ),
+                ],
+              ),
+            ),
+            SizedBox(
+              height: 32,
+              child: TextButton(
+                onPressed: () async {
+                  try {
+                    await authService.sendVerificationEmail();
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Verification link sent! Check your email.'),
+                        ),
+                      );
+                    }
+                  } catch (_) {
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Failed to send link. Try again.')),
+                      );
+                    }
+                  }
+                },
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  backgroundColor: AppTheme.secondary.withValues(alpha: 0.12),
+                ),
+                child: Text(
+                  'Verify',
+                  style: TextStyle(
+                    color: AppTheme.secondary,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 12,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    ).animate().fadeIn(duration: 400.ms).slideY(begin: -0.1, end: 0);
   }
 
   Widget _buildHeader(BuildContext context) {

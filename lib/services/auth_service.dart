@@ -23,6 +23,26 @@ class AuthService extends ChangeNotifier {
   bool _loading = true;
   bool get loading => _loading;
 
+  /// Whether the user just signed up (used to show verification prompt).
+  bool _justSignedUp = false;
+  bool get justSignedUp => _justSignedUp;
+  void clearJustSignedUp() {
+    _justSignedUp = false;
+    notifyListeners();
+  }
+
+  // ── Email verification helpers ──────────────────────────────
+
+  /// Whether the user's email is verified.
+  bool get isEmailVerified => _profile?.emailVerified ?? false;
+
+  /// Whether the 24-hour grace period has expired without verification.
+  bool get isGracePeriodExpired => _profile?.isGracePeriodExpired ?? false;
+
+  /// Remaining time in the grace period.
+  Duration get gracePeriodRemaining =>
+      _profile?.gracePeriodRemaining ?? Duration.zero;
+
   AuthService() {
     _init();
   }
@@ -31,6 +51,12 @@ class AuthService extends ChangeNotifier {
     // Listen for auth changes
     _client.auth.onAuthStateChange.listen((data) async {
       if (data.session != null) {
+        // If we were awaiting verification via magic link, mark as verified
+        if (data.event == AuthChangeEvent.signedIn &&
+            _profile != null &&
+            !_profile!.emailVerified) {
+          await _markEmailVerified();
+        }
         await loadUserData();
       } else {
         _profile = null;
@@ -100,6 +126,7 @@ class AuthService extends ChangeNotifier {
   }
 
   /// Sign up with email & password.
+  /// With "Confirm email" disabled in Supabase, user gets a session immediately.
   Future<void> signUp({
     required String email,
     required String password,
@@ -112,13 +139,15 @@ class AuthService extends ChangeNotifier {
     );
 
     if (response.user != null) {
-      // Create profile
+      // Create profile with email_verified = false
       await _client.from('profiles').insert({
         'id': response.user!.id,
         'username': username.toLowerCase().trim(),
         'display_name': displayName.trim(),
+        'email_verified': false,
       });
 
+      _justSignedUp = true;
       await loadUserData();
     }
   }
@@ -141,8 +170,48 @@ class AuthService extends ChangeNotifier {
     _profile = null;
     _couple = null;
     _partnerProfile = null;
+    _justSignedUp = false;
     notifyListeners();
   }
+
+  // ── Email verification ─────────────────────────────────────
+
+  /// Send a magic link to the user's email for verification.
+  /// When the user clicks it, the auth state change listener
+  /// will detect the sign-in event and mark them as verified.
+  Future<void> sendVerificationEmail() async {
+    final email = currentUser?.email;
+    if (email == null) return;
+
+    await _client.auth.signInWithOtp(
+      email: email,
+      shouldCreateUser: false,
+    );
+  }
+
+  /// Mark the current user's email as verified in the profiles table.
+  Future<void> _markEmailVerified() async {
+    if (currentUser == null) return;
+
+    try {
+      await _client.from('profiles').update({
+        'email_verified': true,
+        'email_verified_at': DateTime.now().toUtc().toIso8601String(),
+      }).eq('id', currentUser!.id);
+
+      // Reload to get updated profile
+      await loadUserData();
+    } catch (e) {
+      debugPrint('Error marking email as verified: $e');
+    }
+  }
+
+  /// Manually mark email as verified (e.g. after magic link callback).
+  Future<void> markEmailVerified() async {
+    await _markEmailVerified();
+  }
+
+  // ── Couple pairing ────────────────────────────────────────
 
   /// Generate a random 6-character invite code for couple pairing.
   String generateInviteCode() {

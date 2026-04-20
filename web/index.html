@@ -1,19 +1,6 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!--
-    If you are serving your web app in a path other than the root, change the
-    href value below to reflect the base path you are serving from.
-
-    The path provided below has to start and end with a slash "/" in order for
-    it to work correctly.
-
-    For more details:
-    * https://developer.mozilla.org/en-US/docs/Web/HTML/Element/base
-
-    This is a placeholder for base href that will be replaced by the value of
-    the `--base-href` argument provided to `flutter build`.
-  -->
   <base href="$FLUTTER_BASE_HREF">
 
   <meta charset="UTF-8">
@@ -29,10 +16,193 @@
   <!-- Favicon -->
   <link rel="icon" type="image/png" href="favicon.png"/>
 
-  <title>couple_chat</title>
+  <title>U&amp;i</title>
   <link rel="manifest" href="manifest.json">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+  <style>
+    body, html {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      background-color: #0f0f13;
+      font-family: 'Inter', sans-serif;
+      overflow: hidden;
+    }
+
+    #uandi-loader {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
+      background-color: #0f0f13;
+      transition: opacity 0.8s ease-in-out, visibility 0.8s ease-in-out;
+    }
+
+    #uandi-loader.fade-out {
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+    }
+
+    /* Drifting Orbs */
+    .orb {
+      position: absolute;
+      border-radius: 50%;
+      filter: blur(80px);
+      z-index: 1;
+      opacity: 0.6;
+      animation: drift 12s infinite alternate ease-in-out;
+    }
+
+    .orb-1 {
+      width: 300px;
+      height: 300px;
+      background: #ff6b6b; /* Coral */
+      top: -100px;
+      left: -100px;
+    }
+
+    .orb-2 {
+      width: 400px;
+      height: 400px;
+      background: #ffb347; /* Amber */
+      bottom: -150px;
+      right: -100px;
+      animation-delay: -6s;
+    }
+
+    @keyframes drift {
+      0% { transform: translate(0, 0) scale(1); }
+      50% { transform: translate(15%, 20%) scale(1.1); }
+      100% { transform: translate(-10%, 15%) scale(0.9); }
+    }
+
+    /* Glassmorphic Card */
+    .glass-card {
+      position: relative;
+      z-index: 10;
+      background: rgba(255, 255, 255, 0.05);
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 28px;
+      padding: 48px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      box-shadow: 0 16px 40px rgba(0, 0, 0, 0.4);
+      animation: slideUp 1s ease-out forwards;
+    }
+
+    @keyframes slideUp {
+      from { transform: translateY(20px); opacity: 0; }
+      to { transform: translateY(0); opacity: 1; }
+    }
+
+    /* Heart Pulse */
+    .heart-icon {
+      animation: pulse 3s infinite ease-in-out;
+      margin-bottom: 24px;
+    }
+
+    @keyframes pulse {
+      0% { transform: scale(0.95); opacity: 0.8; }
+      50% { transform: scale(1.1); opacity: 1; }
+      100% { transform: scale(0.95); opacity: 0.8; }
+    }
+
+    .title {
+      color: #ffffff;
+      font-size: 32px;
+      font-weight: 600;
+      margin: 0 0 12px 0;
+      letter-spacing: -0.5px;
+    }
+
+    .subtitle {
+      color: rgba(255, 255, 255, 0.6);
+      font-size: 14px;
+      font-weight: 400;
+      margin: 0;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .spinner {
+      width: 14px;
+      height: 14px;
+      border: 2px solid rgba(255, 255, 255, 0.2);
+      border-top-color: #ffb347;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      100% { transform: rotate(360deg); }
+    }
+  </style>
 </head>
 <body>
+  <!-- Custom Splash Screen -->
+  <div id="uandi-loader">
+    <div class="orb orb-1"></div>
+    <div class="orb orb-2"></div>
+    
+    <div class="glass-card">
+      <div class="heart-icon">
+        <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="url(#gradient)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <defs>
+            <linearGradient id="gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#ff6b6b" />
+              <stop offset="100%" stop-color="#ffb347" />
+            </linearGradient>
+          </defs>
+          <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path>
+        </svg>
+      </div>
+      <h1 class="title">U&amp;i</h1>
+      <p class="subtitle">
+        <span class="spinner"></span>
+        Waking up...
+      </p>
+    </div>
+  </div>
+
+  <script>
+    // Logic to fade out the custom loader once Flutter adds its engine canvas.
+    document.addEventListener("DOMContentLoaded", function() {
+      const observer = new MutationObserver(function(mutationsList, observer) {
+        for(let mutation of mutationsList) {
+          if (mutation.type === 'childList') {
+            const hasFlutterNode = Array.from(mutation.addedNodes).some(node => {
+              return (node.tagName && node.tagName.toLowerCase() === 'flutter-view') || 
+                     (node.tagName && node.tagName.toLowerCase() === 'flt-glass-pane');
+            });
+
+            if (hasFlutterNode) {
+              const loader = document.getElementById('uandi-loader');
+              if (loader) {
+                // Wait slightly for the first frame to render before fading out
+                setTimeout(() => {
+                  loader.classList.add('fade-out');
+                  // Remove from DOM after transition completes
+                  setTimeout(() => loader.remove(), 800);
+                }, 500);
+              }
+              observer.disconnect();
+              break;
+            }
+          }
+        }
+      });
+      observer.observe(document.body, { childList: true });
+    });
+  </script>
+
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>
