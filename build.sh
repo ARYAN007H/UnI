@@ -12,6 +12,10 @@ else
 fi
 export PATH="$PATH:`pwd`/.flutter-sdk/bin"
 
+# Disable analytics and telemetry to prevent interactive prompts from hanging the build
+flutter config --no-analytics
+dart --disable-telemetry
+
 echo "Flutter version:"
 flutter --version
 
