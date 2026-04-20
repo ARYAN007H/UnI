@@ -3,7 +3,11 @@
 set -e
 
 echo "Installing Flutter..."
-git clone https://github.com/flutter/flutter.git -b stable --depth 1
+if [ ! -d "flutter" ]; then
+  git clone https://github.com/flutter/flutter.git -b stable --depth 1
+else
+  echo "Flutter directory already exists."
+fi
 export PATH="$PATH:`pwd`/flutter/bin"
 
 echo "Flutter version:"
