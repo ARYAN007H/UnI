@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../../config/theme.dart';
 import '../../services/auth_service.dart';
+import '../../widgets/responsive_wrapper.dart';
 
 /// Full-screen blocker shown when the 24-hour email verification
 /// grace period has expired.
@@ -93,7 +94,8 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen>
             ),
 
             SafeArea(
-              child: Padding(
+              child: ResponsiveWrapper(
+                maxWidth: 480,
                 padding: const EdgeInsets.symmetric(horizontal: 32),
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,

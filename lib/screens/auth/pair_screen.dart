@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../../config/theme.dart';
 import '../../services/auth_service.dart';
+import '../../widgets/responsive_wrapper.dart';
 
 class PairScreen extends StatefulWidget {
   final AuthService authService;
@@ -75,59 +76,65 @@ class _PairScreenState extends State<PairScreen> {
               child: Column(
                 children: [
                   // Top bar
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const SizedBox(width: 48),
-                        ShaderMask(
-                          shaderCallback: (b) =>
-                              AppTheme.primaryGradient.createShader(b),
-                          child: Text(
-                            'U&i',
-                            style: Theme.of(context)
-                                .textTheme
-                                .headlineMedium
-                                ?.copyWith(
-                                  fontWeight: FontWeight.w800,
-                                  color: Colors.white,
-                                ),
+                  ResponsiveWrapper(
+                    maxWidth: 520,
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const SizedBox(width: 48),
+                          ShaderMask(
+                            shaderCallback: (b) =>
+                                AppTheme.primaryGradient.createShader(b),
+                            child: Text(
+                              'U&i',
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .headlineMedium
+                                  ?.copyWith(
+                                    fontWeight: FontWeight.w800,
+                                    color: Colors.white,
+                                  ),
+                            ),
                           ),
-                        ),
-                        TextButton.icon(
-                          onPressed: widget.authService.signOut,
-                          icon:
-                              Icon(Icons.logout_rounded, size: 16, color: AppTheme.onSurfaceVariant),
-                          label: Text('Logout',
-                              style: TextStyle(
-                                  color: AppTheme.onSurfaceVariant,
-                                  fontSize: 13)),
-                        ),
-                      ],
+                          TextButton.icon(
+                            onPressed: widget.authService.signOut,
+                            icon:
+                                Icon(Icons.logout_rounded, size: 16, color: AppTheme.onSurfaceVariant),
+                            label: Text('Logout',
+                                style: TextStyle(
+                                    color: AppTheme.onSurfaceVariant,
+                                    fontSize: 13)),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                   Expanded(
                     child: Center(
                       child: SingleChildScrollView(
-                        padding: const EdgeInsets.symmetric(horizontal: 28),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            _buildHearts(),
-                            const SizedBox(height: 24),
-                            _buildTitle(),
-                            const SizedBox(height: 32),
-                            _buildTabs(),
-                            const SizedBox(height: 24),
-                            AnimatedSwitcher(
-                              duration: const Duration(milliseconds: 300),
-                              child: _isCreator
-                                  ? _buildCreatorView()
-                                  : _buildJoinerView(),
-                            ),
-                            const SizedBox(height: 40),
-                          ],
+                        child: ResponsiveWrapper(
+                          maxWidth: 480,
+                          padding: const EdgeInsets.symmetric(horizontal: 28),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              _buildHearts(),
+                              const SizedBox(height: 24),
+                              _buildTitle(),
+                              const SizedBox(height: 32),
+                              _buildTabs(),
+                              const SizedBox(height: 24),
+                              AnimatedSwitcher(
+                                duration: const Duration(milliseconds: 300),
+                                child: _isCreator
+                                    ? _buildCreatorView()
+                                    : _buildJoinerView(),
+                              ),
+                              const SizedBox(height: 40),
+                            ],
+                          ),
                         ),
                       ),
                     ),

@@ -10,6 +10,7 @@ import '../../services/auth_service.dart';
 import '../../services/chat_service.dart';
 import '../../services/presence_service.dart';
 import '../../widgets/message_bubble.dart';
+import '../../widgets/responsive_wrapper.dart';
 import '../../widgets/typing_indicator.dart';
 
 class ChatScreen extends StatefulWidget {
@@ -115,12 +116,15 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         decoration: const BoxDecoration(gradient: AppTheme.surfaceGradient),
         child: SafeArea(
           bottom: false,
-          child: Column(
-            children: [
-              _buildAppBar(),
-              Expanded(child: _buildMessageList()),
-              _buildInputBar(),
-            ],
+          child: ResponsiveWrapper(
+            maxWidth: 520,
+            child: Column(
+              children: [
+                _buildAppBar(),
+                Expanded(child: _buildMessageList()),
+                _buildInputBar(),
+              ],
+            ),
           ),
         ),
       ),

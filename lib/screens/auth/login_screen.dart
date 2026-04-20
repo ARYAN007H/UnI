@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../../config/theme.dart';
 import '../../services/auth_service.dart';
+import '../../widgets/responsive_wrapper.dart';
 
 class LoginScreen extends StatefulWidget {
   final AuthService authService;
@@ -337,7 +338,8 @@ class _LoginScreenState extends State<LoginScreen>
                 slivers: [
                   SliverFillRemaining(
                     hasScrollBody: false,
-                    child: Padding(
+                    child: ResponsiveWrapper(
+                      maxWidth: 480,
                       padding: EdgeInsets.only(
                         left: 28,
                         right: 28,

@@ -7,6 +7,7 @@ import '../../models/models.dart';
 import '../../services/auth_service.dart';
 import '../../services/chat_service.dart';
 import '../../services/presence_service.dart';
+import '../../widgets/responsive_wrapper.dart';
 import '../chat/chat_screen.dart';
 
 class HomeScreen extends StatelessWidget {
@@ -27,32 +28,35 @@ class HomeScreen extends StatelessWidget {
       body: Container(
         decoration: const BoxDecoration(gradient: AppTheme.surfaceGradient),
         child: SafeArea(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildHeader(context),
-              // Email verification reminder banner
-              if (!authService.isEmailVerified)
-                _buildVerificationBanner(context),
-              const SizedBox(height: 12),
-              _buildPartnerCard(context),
-              const SizedBox(height: 6),
-              _buildDaysTogether(context),
-              const SizedBox(height: 20),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: Text(
-                  'CHANNELS',
-                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                        color: AppTheme.onSurfaceVariant.withValues(alpha: 0.6),
-                        letterSpacing: 1.5,
-                        fontWeight: FontWeight.w600,
-                      ),
+          child: ResponsiveWrapper(
+            maxWidth: 520,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildHeader(context),
+                // Email verification reminder banner
+                if (!authService.isEmailVerified)
+                  _buildVerificationBanner(context),
+                const SizedBox(height: 12),
+                _buildPartnerCard(context),
+                const SizedBox(height: 6),
+                _buildDaysTogether(context),
+                const SizedBox(height: 20),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: Text(
+                    'CHANNELS',
+                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                          color: AppTheme.onSurfaceVariant.withValues(alpha: 0.6),
+                          letterSpacing: 1.5,
+                          fontWeight: FontWeight.w600,
+                        ),
+                  ),
                 ),
-              ),
-              const SizedBox(height: 8),
-              Expanded(child: _buildChannelList(context)),
-            ],
+                const SizedBox(height: 8),
+                Expanded(child: _buildChannelList(context)),
+              ],
+            ),
           ),
         ),
       ),
