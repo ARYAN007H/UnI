@@ -126,31 +126,38 @@ class AuthService extends ChangeNotifier {
           .or('user_1.eq.$userId,user_2.eq.$userId')
           .order('paired_at', ascending: false);
 
-      // Prefer a fully paired couple (user_2 is not null) over an unpaired one
+      // Only consider fully paired couples (user_2 is not null)
+      // Unpaired ones (waiting for partner) should keep _couple as null
+      // so main.dart correctly shows the PairScreen.
       Map<String, dynamic>? coupleData;
       if (coupleList.isNotEmpty) {
-        coupleData = coupleList.firstWhere(
-          (c) => c['user_2'] != null,
-          orElse: () => coupleList.first,
-        );
+        try {
+          coupleData = coupleList.firstWhere(
+            (c) => c['user_2'] != null,
+          );
+        } catch (_) {
+          // No fully paired couple found — stay on PairScreen
+          coupleData = null;
+        }
       }
 
       if (coupleData != null) {
         _couple = Couple.fromJson(coupleData);
 
-        // Load partner profile (only if fully paired)
-        if (coupleData['user_2'] != null) {
-          final partnerId = _couple!.partnerId(userId);
-          final partnerData = await _client
-              .from('profiles')
-              .select()
-              .eq('id', partnerId)
-              .maybeSingle();
+        // Load partner profile
+        final partnerId = _couple!.partnerId(userId);
+        final partnerData = await _client
+            .from('profiles')
+            .select()
+            .eq('id', partnerId)
+            .maybeSingle();
 
-          if (partnerData != null) {
-            _partnerProfile = Profile.fromJson(partnerData);
-          }
+        if (partnerData != null) {
+          _partnerProfile = Profile.fromJson(partnerData);
         }
+      } else {
+        _couple = null;
+        _partnerProfile = null;
       }
     } catch (e) {
       debugPrint('Error loading user data: $e');

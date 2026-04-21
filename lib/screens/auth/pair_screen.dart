@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -23,6 +24,7 @@ class _PairScreenState extends State<PairScreen>
   String? _error;
 
   late final AnimationController _pulseController;
+  Timer? _pollTimer;
 
   @override
   void initState() {
@@ -37,7 +39,19 @@ class _PairScreenState extends State<PairScreen>
   void dispose() {
     _codeController.dispose();
     _pulseController.dispose();
+    _pollTimer?.cancel();
     super.dispose();
+  }
+
+  /// Start polling every 3 seconds to detect when partner joins.
+  void _startPolling() {
+    _pollTimer?.cancel();
+    _pollTimer = Timer.periodic(const Duration(seconds: 3), (_) async {
+      // Reload user data from Supabase — if partner joined,
+      // the couple will have user_2 set, which triggers AuthService
+      // to notify listeners → main.dart rebuilds → navigates to HomeScreen.
+      await widget.authService.loadUserData();
+    });
   }
 
   Future<void> _createCouple() async {
@@ -48,6 +62,8 @@ class _PairScreenState extends State<PairScreen>
     try {
       final code = await widget.authService.createCouple();
       setState(() => _inviteCode = code);
+      // Start polling for partner joining
+      _startPolling();
     } catch (e) {
       setState(() => _error = _formatError(e));
     } finally {
