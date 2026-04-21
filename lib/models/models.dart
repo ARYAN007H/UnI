@@ -154,6 +154,15 @@ class Couple {
   }
 }
 
+/// Determines the specialized UI each channel renders.
+enum ChannelType {
+  general,  // Standard cozy chat
+  photos,   // Gallery-first media view
+  plans,    // Date planner with cards & countdowns
+  random,   // Fun playground with prompts & mini-games
+  custom,   // User-created channels (fallback to chat)
+}
+
 class Channel {
   final String id;
   final String coupleId;
@@ -181,6 +190,22 @@ class Channel {
     this.lastMessageAt,
     this.unreadCount = 0,
   });
+
+  /// Derives the channel type from its name for default channels.
+  ChannelType get type {
+    switch (name.toLowerCase()) {
+      case 'general':
+        return ChannelType.general;
+      case 'photos':
+        return ChannelType.photos;
+      case 'plans':
+        return ChannelType.plans;
+      case 'random':
+        return ChannelType.random;
+      default:
+        return ChannelType.custom;
+    }
+  }
 
   factory Channel.fromJson(Map<String, dynamic> json) {
     return Channel(
@@ -216,7 +241,7 @@ class Channel {
   }
 }
 
-enum MessageType { text, image, video, voice, file, system }
+enum MessageType { text, image, video, voice, file, system, plan }
 
 class Message {
   final String id;
@@ -291,8 +316,117 @@ class Message {
         return MessageType.file;
       case 'system':
         return MessageType.system;
+      case 'plan':
+        return MessageType.plan;
       default:
         return MessageType.text;
     }
   }
+}
+
+/// A date/plan item stored as a structured message in the plans channel.
+class Plan {
+  final String id;
+  final String channelId;
+  final String title;
+  final String? description;
+  final String? location;
+  final DateTime? plannedDate;
+  final bool isCompleted;
+  final String createdBy;
+  final DateTime createdAt;
+
+  const Plan({
+    required this.id,
+    required this.channelId,
+    required this.title,
+    this.description,
+    this.location,
+    this.plannedDate,
+    this.isCompleted = false,
+    required this.createdBy,
+    required this.createdAt,
+  });
+
+  /// Serialize to JSON for storing in message content field.
+  Map<String, dynamic> toJson() => {
+        'title': title,
+        'description': description,
+        'location': location,
+        'planned_date': plannedDate?.toIso8601String(),
+        'is_completed': isCompleted,
+      };
+
+  /// Parse from a plan-type message.
+  factory Plan.fromMessage(Message msg) {
+    // Content is JSON-encoded plan data
+    Map<String, dynamic> data = {};
+    if (msg.content != null) {
+      try {
+        data = _parseJsonContent(msg.content!);
+      } catch (_) {
+        data = {'title': msg.content};
+      }
+    }
+
+    return Plan(
+      id: msg.id,
+      channelId: msg.channelId,
+      title: data['title'] as String? ?? 'Untitled Plan',
+      description: data['description'] as String?,
+      location: data['location'] as String?,
+      plannedDate: data['planned_date'] != null
+          ? DateTime.tryParse(data['planned_date'] as String)
+          : null,
+      isCompleted: data['is_completed'] as bool? ?? false,
+      createdBy: msg.senderId,
+      createdAt: msg.createdAt,
+    );
+  }
+
+  static Map<String, dynamic> _parseJsonContent(String content) {
+    // Simple JSON parser for plan content
+    // Content format: {"title":"...","description":"...","location":"...","planned_date":"...","is_completed":false}
+    try {
+      // Use dart:convert
+      return Map<String, dynamic>.from(
+        Uri.splitQueryString(content).map((k, v) => MapEntry(k, v)),
+      );
+    } catch (_) {
+      return {'title': content};
+    }
+  }
+
+  Plan copyWith({
+    bool? isCompleted,
+    String? title,
+    String? description,
+    String? location,
+    DateTime? plannedDate,
+  }) {
+    return Plan(
+      id: id,
+      channelId: channelId,
+      title: title ?? this.title,
+      description: description ?? this.description,
+      location: location ?? this.location,
+      plannedDate: plannedDate ?? this.plannedDate,
+      isCompleted: isCompleted ?? this.isCompleted,
+      createdBy: createdBy,
+      createdAt: createdAt,
+    );
+  }
+}
+
+/// A conversation prompt for the random channel.
+class ConversationPrompt {
+  final String text;
+  final String category;
+  final String emoji;
+
+  const ConversationPrompt({
+    required this.text,
+    required this.category,
+    required this.emoji,
+  });
 }

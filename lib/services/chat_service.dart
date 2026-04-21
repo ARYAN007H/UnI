@@ -1,6 +1,9 @@
+import 'dart:convert';
+import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
+import '../config/supabase_config.dart';
 import '../models/models.dart';
 
 /// Handles all chat-related data operations with Supabase.
@@ -29,9 +32,14 @@ class ChatService extends ChangeNotifier {
   bool get partnerIsTyping => _partnerIsTyping;
   DateTime? _lastTypingEvent;
 
+  // ── Random prompts ──────────────────────────────────────────
+  final Random _random = Random();
+  int _currentPromptIndex = 0;
+
   /// Initialize with couple ID and load channels.
   Future<void> initialize(String coupleId) async {
     _coupleId = coupleId;
+    _currentPromptIndex = _random.nextInt(SupabaseConfig.conversationPrompts.length);
     await loadChannels();
   }
 
@@ -340,6 +348,97 @@ class ChatService extends ChangeNotifier {
       }
     } catch (e) {
       debugPrint('Error editing message: $e');
+    }
+  }
+
+  // ── Plans (stored as structured messages) ──────────────────
+
+  /// Get all plans for a channel (messages with type == plan).
+  List<Plan> plansForChannel(String channelId) {
+    final messages = _messagesByChannel[channelId] ?? [];
+    return messages
+        .where((m) => m.type == MessageType.plan && !m.isDeleted)
+        .map((m) => Plan.fromMessage(m))
+        .toList();
+  }
+
+  /// Create a new plan in a channel.
+  Future<void> createPlan({
+    required String channelId,
+    required String senderId,
+    required String title,
+    String? description,
+    String? location,
+    DateTime? plannedDate,
+  }) async {
+    final planData = {
+      'title': title,
+      'description': description,
+      'location': location,
+      'planned_date': plannedDate?.toIso8601String(),
+      'is_completed': false,
+    };
+
+    await sendMessage(
+      channelId: channelId,
+      senderId: senderId,
+      content: jsonEncode(planData),
+      type: MessageType.plan,
+    );
+  }
+
+  /// Toggle plan completion status.
+  Future<void> togglePlanCompleted(String messageId, String channelId, bool completed) async {
+    final messages = _messagesByChannel[channelId];
+    if (messages == null) return;
+
+    final idx = messages.indexWhere((m) => m.id == messageId);
+    if (idx == -1) return;
+
+    final msg = messages[idx];
+    Map<String, dynamic> planData;
+    try {
+      planData = jsonDecode(msg.content ?? '{}');
+    } catch (_) {
+      planData = {'title': msg.content};
+    }
+    planData['is_completed'] = completed;
+
+    await editMessage(messageId, channelId, jsonEncode(planData));
+  }
+
+  // ── Random Channel Helpers ────────────────────────────────
+
+  /// Get the current conversation prompt.
+  ConversationPrompt get currentPrompt {
+    final prompts = SupabaseConfig.conversationPrompts;
+    return prompts[_currentPromptIndex % prompts.length];
+  }
+
+  /// Get a new random prompt (different from current).
+  ConversationPrompt nextRandomPrompt() {
+    final prompts = SupabaseConfig.conversationPrompts;
+    int newIndex;
+    do {
+      newIndex = _random.nextInt(prompts.length);
+    } while (newIndex == _currentPromptIndex && prompts.length > 1);
+    _currentPromptIndex = newIndex;
+    notifyListeners();
+    return prompts[_currentPromptIndex];
+  }
+
+  /// Get a random date night option.
+  String getRandomDateNightOption() {
+    final options = SupabaseConfig.dateNightOptions;
+    return options[_random.nextInt(options.length)];
+  }
+
+  /// Find the #general channel (for quick actions).
+  Channel? get generalChannel {
+    try {
+      return _channels.firstWhere((c) => c.type == ChannelType.general);
+    } catch (_) {
+      return _channels.isNotEmpty ? _channels.first : null;
     }
   }
 

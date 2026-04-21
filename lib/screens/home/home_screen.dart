@@ -1,13 +1,19 @@
-import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
-import 'package:timeago/timeago.dart' as timeago;
 import '../../config/theme.dart';
 import '../../models/models.dart';
 import '../../services/auth_service.dart';
 import '../../services/chat_service.dart';
 import '../../services/presence_service.dart';
+import '../../widgets/channel_card.dart';
+import '../../widgets/couple_header.dart';
+import '../../widgets/quick_actions.dart';
 import '../../widgets/responsive_wrapper.dart';
+import '../chat/general_chat_screen.dart';
+import '../chat/photos_screen.dart';
+import '../chat/plans_screen.dart';
+import '../chat/random_screen.dart';
 import '../chat/chat_screen.dart';
 
 class HomeScreen extends StatelessWidget {
@@ -24,44 +30,118 @@ class HomeScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final couple = authService.couple;
+    final days = couple != null
+        ? DateTime.now().difference(couple.pairedAt).inDays
+        : 0;
+
     return Scaffold(
       body: Container(
         decoration: const BoxDecoration(gradient: AppTheme.surfaceGradient),
         child: SafeArea(
           child: ResponsiveWrapper(
             maxWidth: 520,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _buildHeader(context),
-                // Email verification reminder banner
+            child: CustomScrollView(
+              slivers: [
+                // Header with logo
+                SliverToBoxAdapter(child: _buildHeader(context)),
+                // Email verification banner
                 if (!authService.isEmailVerified)
-                  _buildVerificationBanner(context),
-                const SizedBox(height: 12),
-                _buildPartnerCard(context),
-                const SizedBox(height: 6),
-                _buildDaysTogether(context),
-                const SizedBox(height: 20),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
-                  child: Text(
-                    'CHANNELS',
-                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                          color: AppTheme.onSurfaceVariant.withValues(alpha: 0.6),
-                          letterSpacing: 1.5,
-                          fontWeight: FontWeight.w600,
-                        ),
-                  ),
+                  SliverToBoxAdapter(child: _buildVerificationBanner(context)),
+                const SliverToBoxAdapter(child: SizedBox(height: 16)),
+                // Couple header with avatars
+                SliverToBoxAdapter(
+                  child: CoupleHeader(
+                    myProfile: authService.profile,
+                    partnerProfile: authService.partnerProfile,
+                    presenceService: presenceService,
+                    daysTogether: days,
+                    isVanillaMode: couple?.isVanillaMode ?? false,
+                  ).animate().fadeIn(delay: 100.ms, duration: 500.ms),
                 ),
-                const SizedBox(height: 8),
-                Expanded(child: _buildChannelList(context)),
+                const SliverToBoxAdapter(child: SizedBox(height: 20)),
+                // Quick actions
+                SliverToBoxAdapter(
+                  child: QuickActions(
+                    authService: authService,
+                    chatService: chatService,
+                  ).animate().fadeIn(delay: 200.ms, duration: 400.ms),
+                ),
+                const SliverToBoxAdapter(child: SizedBox(height: 24)),
+                // Channels section header
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    child: Text(
+                      'YOUR SPACES',
+                      style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                            color: AppTheme.onSurfaceVariant.withValues(alpha: 0.5),
+                            letterSpacing: 1.5,
+                            fontWeight: FontWeight.w600,
+                          ),
+                    ),
+                  ).animate().fadeIn(delay: 250.ms, duration: 400.ms),
+                ),
+                const SliverToBoxAdapter(child: SizedBox(height: 8)),
+                // Channel list
+                _buildChannelList(context),
+                // Bottom padding
+                const SliverToBoxAdapter(child: SizedBox(height: 100)),
               ],
             ),
           ),
         ),
       ),
-      floatingActionButton: _buildFab(context),
+      floatingActionButton: _buildSettingsFab(context),
     );
+  }
+
+  Widget _buildHeader(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 14, 12, 0),
+      child: Row(
+        children: [
+          // Warm gradient heart icon
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              gradient: AppTheme.primaryGradient,
+              borderRadius: BorderRadius.circular(12),
+              boxShadow: [
+                BoxShadow(
+                  color: AppTheme.primary.withValues(alpha: 0.3),
+                  blurRadius: 16,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: const Icon(Icons.favorite_rounded,
+                size: 22, color: Colors.white),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: ShaderMask(
+              shaderCallback: (b) =>
+                  AppTheme.primaryGradient.createShader(b),
+              child: Text(
+                'U&i',
+                style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                      fontWeight: FontWeight.w800,
+                      color: Colors.white,
+                      letterSpacing: -0.5,
+                    ),
+              ),
+            ),
+          ),
+          IconButton(
+            icon: Icon(Icons.settings_rounded,
+                color: AppTheme.onSurfaceVariant, size: 22),
+            onPressed: () => _showSettings(context),
+          ),
+        ],
+      ),
+    ).animate().fadeIn(duration: 400.ms).slideX(begin: -0.05, end: 0);
   }
 
   Widget _buildVerificationBanner(BuildContext context) {
@@ -166,348 +246,147 @@ class HomeScreen extends StatelessWidget {
     ).animate().fadeIn(duration: 400.ms).slideY(begin: -0.1, end: 0);
   }
 
-  Widget _buildHeader(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 14, 12, 0),
-      child: Row(
-        children: [
-          // Warm gradient heart icon
-          Container(
-            width: 36,
-            height: 36,
-            decoration: BoxDecoration(
-              gradient: AppTheme.primaryGradient,
-              borderRadius: BorderRadius.circular(10),
-              boxShadow: [
-                BoxShadow(
-                  color: AppTheme.primary.withValues(alpha: 0.25),
-                  blurRadius: 12,
-                  offset: const Offset(0, 2),
-                ),
-              ],
-            ),
-            child: const Icon(Icons.favorite_rounded,
-                size: 20, color: Colors.white),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: ShaderMask(
-              shaderCallback: (b) =>
-                  AppTheme.primaryGradient.createShader(b),
-              child: Text(
-                'U&i',
-                style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                      fontWeight: FontWeight.w800,
-                      color: Colors.white,
-                      letterSpacing: -0.5,
-                    ),
-              ),
-            ),
-          ),
-          IconButton(
-            icon: Icon(Icons.settings_rounded,
-                color: AppTheme.onSurfaceVariant, size: 22),
-            onPressed: () => _showSettings(context),
-          ),
-        ],
-      ),
-    ).animate().fadeIn(duration: 400.ms).slideX(begin: -0.05, end: 0);
-  }
-
-  Widget _buildPartnerCard(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: ListenableBuilder(
-        listenable: presenceService,
-        builder: (context, _) {
-          final partner = authService.partnerProfile;
-          if (partner == null) return const SizedBox.shrink();
-
-          final online = presenceService.partnerOnline;
-          final lastSeen =
-              presenceService.partnerLastSeen ?? partner.lastSeen;
-
-          return ClipRRect(
-            borderRadius: BorderRadius.circular(20),
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-              child: Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: AppTheme.surfaceContainer.withValues(alpha: 0.65),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(
-                    color: online
-                        ? AppTheme.success.withValues(alpha: 0.2)
-                        : AppTheme.outline.withValues(alpha: 0.15),
-                  ),
-                  boxShadow: online
-                      ? [
-                          BoxShadow(
-                            color:
-                                AppTheme.success.withValues(alpha: 0.06),
-                            blurRadius: 20,
-                            spreadRadius: 1,
-                          ),
-                        ]
-                      : null,
-                ),
-                child: Row(
-                  children: [
-                    _avatar(partner, online),
-                    const SizedBox(width: 14),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            partner.displayName,
-                            style: Theme.of(context)
-                                .textTheme
-                                .titleMedium
-                                ?.copyWith(fontWeight: FontWeight.w600),
-                          ),
-                          const SizedBox(height: 4),
-                          Row(
-                            children: [
-                              Container(
-                                width: 8,
-                                height: 8,
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  color: online
-                                      ? AppTheme.success
-                                      : AppTheme.onSurfaceVariant
-                                          .withValues(alpha: 0.4),
-                                  boxShadow: online
-                                      ? [
-                                          BoxShadow(
-                                            color: AppTheme.success
-                                                .withValues(alpha: 0.4),
-                                            blurRadius: 6,
-                                          ),
-                                        ]
-                                      : null,
-                                ),
-                              ),
-                              const SizedBox(width: 6),
-                              Text(
-                                online
-                                    ? 'Online now'
-                                    : (lastSeen != null
-                                        ? 'Last seen ${timeago.format(lastSeen)}'
-                                        : 'Offline'),
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .bodySmall
-                                    ?.copyWith(
-                                      color: online
-                                          ? AppTheme.success
-                                          : AppTheme.onSurfaceVariant,
-                                    ),
-                              ),
-                            ],
-                          ),
-                          if (partner.statusText.isNotEmpty) ...[
-                            const SizedBox(height: 4),
-                            Text(
-                              partner.statusText,
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .bodySmall
-                                  ?.copyWith(
-                                    color: AppTheme.onSurfaceVariant
-                                        .withValues(alpha: 0.7),
-                                    fontStyle: FontStyle.italic,
-                                  ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          );
-        },
-      ),
-    ).animate().fadeIn(delay: 150.ms, duration: 400.ms);
-  }
-
-  Widget _buildDaysTogether(BuildContext context) {
-    final couple = authService.couple;
-    if (couple == null) return const SizedBox.shrink();
-
-    final days = DateTime.now().difference(couple.pairedAt).inDays;
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [
-              AppTheme.primary.withValues(alpha: 0.08),
-              AppTheme.secondary.withValues(alpha: 0.05),
-            ],
-          ),
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-            color: AppTheme.primary.withValues(alpha: 0.1),
-          ),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.favorite_rounded,
-                size: 14, color: AppTheme.primary),
-            const SizedBox(width: 8),
-            Text(
-              'Together $days day${days == 1 ? '' : 's'}',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: AppTheme.primary,
-                    fontWeight: FontWeight.w600,
-                  ),
-            ),
-          ],
-        ),
-      ),
-    ).animate().fadeIn(delay: 250.ms);
-  }
-
-  Widget _avatar(Profile p, bool online) {
-    return Stack(
-      children: [
-        Container(
-          width: 48,
-          height: 48,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            gradient: online ? AppTheme.primaryGradient : null,
-            color: online ? null : AppTheme.surfaceContainerHigh,
-            border: online
-                ? null
-                : Border.all(color: AppTheme.outline.withValues(alpha: 0.3)),
-          ),
-          padding: const EdgeInsets.all(2),
-          child: CircleAvatar(
-            radius: 22,
-            backgroundColor: AppTheme.surfaceContainerHigh,
-            backgroundImage:
-                p.avatarUrl != null ? NetworkImage(p.avatarUrl!) : null,
-            child: p.avatarUrl == null
-                ? Text(
-                    p.displayName[0].toUpperCase(),
-                    style: TextStyle(
-                      color: AppTheme.primary,
-                      fontWeight: FontWeight.w700,
-                      fontSize: 18,
-                    ),
-                  )
-                : null,
-          ),
-        ),
-        if (online)
-          Positioned(
-            right: 1,
-            bottom: 1,
-            child: Container(
-              width: 14,
-              height: 14,
-              decoration: BoxDecoration(
-                color: AppTheme.success,
-                shape: BoxShape.circle,
-                border: Border.all(color: AppTheme.surface, width: 2.5),
-                boxShadow: [
-                  BoxShadow(
-                    color: AppTheme.success.withValues(alpha: 0.4),
-                    blurRadius: 6,
-                  ),
-                ],
-              ),
-            ),
-          ),
-      ],
-    );
-  }
-
   Widget _buildChannelList(BuildContext context) {
     return ListenableBuilder(
       listenable: chatService,
       builder: (context, _) {
         final channels = chatService.channels;
         if (channels.isEmpty) {
-          return Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 64,
-                  height: 64,
-                  decoration: BoxDecoration(
-                    color: AppTheme.primary.withValues(alpha: 0.08),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(Icons.chat_bubble_outline_rounded,
-                      size: 28,
-                      color: AppTheme.onSurfaceVariant.withValues(alpha: 0.4)),
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  'No channels yet',
-                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                        color: AppTheme.onSurfaceVariant,
-                        fontWeight: FontWeight.w500,
+          return SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.all(40),
+              child: Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 64,
+                      height: 64,
+                      decoration: BoxDecoration(
+                        color: AppTheme.primary.withValues(alpha: 0.08),
+                        shape: BoxShape.circle,
                       ),
+                      child: Icon(Icons.chat_bubble_outline_rounded,
+                          size: 28,
+                          color: AppTheme.onSurfaceVariant.withValues(alpha: 0.4)),
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      'Setting up your spaces...',
+                      style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                            color: AppTheme.onSurfaceVariant,
+                            fontWeight: FontWeight.w500,
+                          ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Your channels will appear here',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: AppTheme.onSurfaceVariant.withValues(alpha: 0.6),
+                          ),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  'Tap + to create your first channel',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: AppTheme.onSurfaceVariant.withValues(alpha: 0.6),
-                      ),
-                ),
-              ],
+              ),
             ),
           );
         }
 
-        return ListView.builder(
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          itemCount: channels.length,
-          itemBuilder: (context, index) {
-            return _ChannelTile(
-              channel: channels[index],
-              onTap: () => _openChannel(context, channels[index]),
-            )
-                .animate(delay: Duration(milliseconds: 80 * index))
-                .fadeIn(duration: 350.ms)
-                .slideX(begin: 0.03, end: 0);
-          },
+        return SliverList(
+          delegate: SliverChildBuilderDelegate(
+            (context, index) {
+              final channel = channels[index];
+              return ChannelCard(
+                channel: channel,
+                previewText: _previewFor(channel),
+                onTap: () => _openChannel(context, channel),
+              )
+                  .animate(delay: Duration(milliseconds: 60 * index + 300))
+                  .fadeIn(duration: 350.ms)
+                  .slideY(begin: 0.05, end: 0);
+            },
+            childCount: channels.length,
+          ),
         );
       },
     );
   }
 
+  String? _previewFor(Channel channel) {
+    switch (channel.type) {
+      case ChannelType.general:
+        return channel.lastMessageContent ?? channel.description;
+      case ChannelType.photos:
+        return 'Share your moments together 📸';
+      case ChannelType.plans:
+        final plans = chatService.plansForChannel(channel.id);
+        final upcoming = plans.where((p) => !p.isCompleted).length;
+        if (upcoming > 0) return '$upcoming plan${upcoming == 1 ? '' : 's'} waiting ✨';
+        return 'Plan your next adventure 🗺️';
+      case ChannelType.random:
+        return chatService.currentPrompt.text.length > 40
+            ? '${chatService.currentPrompt.text.substring(0, 40)}...'
+            : chatService.currentPrompt.text;
+      case ChannelType.custom:
+        return channel.description;
+    }
+  }
+
   void _openChannel(BuildContext context, Channel channel) {
-    Navigator.push(
-      context,
-      PageRouteBuilder(
-        pageBuilder: (_, __, ___) => ChatScreen(
+    Widget screen;
+    switch (channel.type) {
+      case ChannelType.general:
+        screen = GeneralChatScreen(
           channel: channel,
           authService: authService,
           chatService: chatService,
           presenceService: presenceService,
-        ),
+        );
+        break;
+      case ChannelType.photos:
+        screen = PhotosScreen(
+          channel: channel,
+          authService: authService,
+          chatService: chatService,
+          presenceService: presenceService,
+        );
+        break;
+      case ChannelType.plans:
+        screen = PlansScreen(
+          channel: channel,
+          authService: authService,
+          chatService: chatService,
+          presenceService: presenceService,
+        );
+        break;
+      case ChannelType.random:
+        screen = RandomScreen(
+          channel: channel,
+          authService: authService,
+          chatService: chatService,
+          presenceService: presenceService,
+        );
+        break;
+      case ChannelType.custom:
+        screen = ChatScreen(
+          channel: channel,
+          authService: authService,
+          chatService: chatService,
+          presenceService: presenceService,
+        );
+        break;
+    }
+
+    Navigator.push(
+      context,
+      PageRouteBuilder(
+        pageBuilder: (_, __, ___) => screen,
         transitionsBuilder: (_, anim, __, child) {
           return FadeTransition(
             opacity: CurvedAnimation(parent: anim, curve: Curves.easeOut),
             child: SlideTransition(
               position: Tween<Offset>(
-                begin: const Offset(0.06, 0),
+                begin: const Offset(0.05, 0),
                 end: Offset.zero,
               ).animate(CurvedAnimation(
                   parent: anim, curve: Curves.easeOutCubic)),
@@ -520,25 +399,27 @@ class HomeScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildFab(BuildContext context) {
+  Widget _buildSettingsFab(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        gradient: AppTheme.primaryGradient,
-        borderRadius: BorderRadius.circular(18),
+        color: AppTheme.surfaceContainerHigh.withValues(alpha: 0.9),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppTheme.outline.withValues(alpha: 0.15)),
         boxShadow: [
           BoxShadow(
-            color: AppTheme.primary.withValues(alpha: 0.35),
-            blurRadius: 16,
+            color: Colors.black.withValues(alpha: 0.2),
+            blurRadius: 12,
             offset: const Offset(0, 4),
           ),
         ],
       ),
-      child: FloatingActionButton(
+      child: FloatingActionButton.small(
         onPressed: () => _showCreateChannel(context),
         backgroundColor: Colors.transparent,
         elevation: 0,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-        child: const Icon(Icons.add_rounded, color: Colors.white, size: 26),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: Icon(Icons.add_rounded,
+            color: AppTheme.onSurfaceVariant, size: 22),
       ),
     );
   }
@@ -957,87 +838,6 @@ class HomeScreen extends StatelessWidget {
                 ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-// ── Channel Tile ──────────────────────────────────────────────
-class _ChannelTile extends StatelessWidget {
-  final Channel channel;
-  final VoidCallback onTap;
-
-  const _ChannelTile({required this.channel, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 2),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(16),
-          splashColor: AppTheme.primary.withValues(alpha: 0.06),
-          highlightColor: AppTheme.primary.withValues(alpha: 0.03),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Row(
-              children: [
-                // Channel icon container
-                Container(
-                  width: 46,
-                  height: 46,
-                  decoration: BoxDecoration(
-                    color: AppTheme.primary.withValues(alpha: 0.08),
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(
-                      color: AppTheme.primary.withValues(alpha: 0.06),
-                    ),
-                  ),
-                  child: Center(
-                    child: Text(channel.icon,
-                        style: const TextStyle(fontSize: 22)),
-                  ),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '#${channel.name}',
-                        style: Theme.of(context)
-                            .textTheme
-                            .titleMedium
-                            ?.copyWith(fontWeight: FontWeight.w600),
-                      ),
-                      if (channel.description.isNotEmpty)
-                        Text(
-                          channel.description,
-                          style: Theme.of(context)
-                              .textTheme
-                              .bodySmall
-                              ?.copyWith(
-                                color: AppTheme.onSurfaceVariant
-                                    .withValues(alpha: 0.7),
-                              ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                    ],
-                  ),
-                ),
-                Icon(Icons.chevron_right_rounded,
-                    color: AppTheme.onSurfaceVariant.withValues(alpha: 0.4),
-                    size: 20),
-              ],
-            ),
-          ),
-        ),
       ),
     );
   }

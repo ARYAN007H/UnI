@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import '../models/models.dart';
 
 /// Dynamic Theme System — Vibe Coding V2
 class AppTheme {
@@ -30,6 +31,55 @@ class AppTheme {
   static const Color _error = Color(0xFFFF6B6B);
   static const Color _success = Color(0xFF6BCB77);
   static const Color _receivedBubble = Color(0xFF1E1C28);
+
+  // ── Per-Channel Color Palettes ────────────────────────────────
+  static const Map<ChannelType, ChannelColors> channelPalettes = {
+    ChannelType.general: ChannelColors(
+      accent: Color(0xFFFF6B8A),
+      accentLight: Color(0xFFFF8FA8),
+      gradientStart: Color(0xFFFF6B8A),
+      gradientEnd: Color(0xFFFF9E6B),
+      bgTint: Color(0xFF2D1520),
+      iconBg: Color(0xFF3D1828),
+    ),
+    ChannelType.photos: ChannelColors(
+      accent: Color(0xFFFFB347),
+      accentLight: Color(0xFFFFD080),
+      gradientStart: Color(0xFFFFB347),
+      gradientEnd: Color(0xFFFF8B60),
+      bgTint: Color(0xFF2D2215),
+      iconBg: Color(0xFF3D2D18),
+    ),
+    ChannelType.plans: ChannelColors(
+      accent: Color(0xFF4ECDC4),
+      accentLight: Color(0xFF7EDDD7),
+      gradientStart: Color(0xFF4ECDC4),
+      gradientEnd: Color(0xFF44B09E),
+      bgTint: Color(0xFF152D2A),
+      iconBg: Color(0xFF183D38),
+    ),
+    ChannelType.random: ChannelColors(
+      accent: Color(0xFFB06CED),
+      accentLight: Color(0xFFCB92FF),
+      gradientStart: Color(0xFFB06CED),
+      gradientEnd: Color(0xFF7B5CFF),
+      bgTint: Color(0xFF20152D),
+      iconBg: Color(0xFF2B183D),
+    ),
+    ChannelType.custom: ChannelColors(
+      accent: Color(0xFF9E97AB),
+      accentLight: Color(0xFFB8B2C2),
+      gradientStart: Color(0xFF9E97AB),
+      gradientEnd: Color(0xFF7A7388),
+      bgTint: Color(0xFF1E1C28),
+      iconBg: Color(0xFF262433),
+    ),
+  };
+
+  /// Get the color palette for a channel type
+  static ChannelColors colorsFor(ChannelType type) {
+    return channelPalettes[type] ?? channelPalettes[ChannelType.custom]!;
+  }
 
   // ── Initialization / Theming Engine ───────────────────────
   static void initializeTheme(String hexColor) {
@@ -96,6 +146,27 @@ class AppTheme {
     colors: [_primary.withValues(alpha: 0.15), _primary.withValues(alpha: 0.0)],
     radius: 0.8,
   );
+
+  /// Gradient for a specific channel type
+  static LinearGradient channelGradient(ChannelType type) {
+    final colors = colorsFor(type);
+    return LinearGradient(
+      colors: [colors.gradientStart, colors.gradientEnd],
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+    );
+  }
+
+  /// Subtle background tint gradient for channel screens
+  static LinearGradient channelBgGradient(ChannelType type) {
+    final colors = colorsFor(type);
+    return LinearGradient(
+      colors: [_surface, colors.bgTint.withValues(alpha: 0.4), _surfaceContainer],
+      begin: Alignment.topCenter,
+      end: Alignment.bottomCenter,
+      stops: const [0.0, 0.5, 1.0],
+    );
+  }
 
   // ── Exposed Colors ─────────────────────────────────────────
   static Color get primary => _primary;
@@ -259,4 +330,40 @@ class AppTheme {
       ],
     );
   }
+
+  /// Creates a glassmorphic card decoration with channel-specific accent
+  static BoxDecoration channelCard(ChannelType type, {double radius = 20}) {
+    final colors = colorsFor(type);
+    return BoxDecoration(
+      color: _surfaceContainer.withValues(alpha: 0.7),
+      borderRadius: BorderRadius.circular(radius),
+      border: Border.all(color: colors.accent.withValues(alpha: 0.12)),
+      boxShadow: [
+        BoxShadow(
+          color: colors.accent.withValues(alpha: 0.04),
+          blurRadius: 16,
+          spreadRadius: 1,
+        ),
+      ],
+    );
+  }
+}
+
+/// Holds the color set for each channel type.
+class ChannelColors {
+  final Color accent;
+  final Color accentLight;
+  final Color gradientStart;
+  final Color gradientEnd;
+  final Color bgTint;
+  final Color iconBg;
+
+  const ChannelColors({
+    required this.accent,
+    required this.accentLight,
+    required this.gradientStart,
+    required this.gradientEnd,
+    required this.bgTint,
+    required this.iconBg,
+  });
 }
