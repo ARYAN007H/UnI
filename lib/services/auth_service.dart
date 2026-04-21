@@ -119,26 +119,37 @@ class AuthService extends ChangeNotifier {
         }
       }
 
-      // Load couple
-      final coupleData = await _client
+      // Load couple — use list query to handle potential duplicate rows
+      final coupleList = await _client
           .from('couples')
           .select()
           .or('user_1.eq.$userId,user_2.eq.$userId')
-          .maybeSingle();
+          .order('paired_at', ascending: false);
+
+      // Prefer a fully paired couple (user_2 is not null) over an unpaired one
+      Map<String, dynamic>? coupleData;
+      if (coupleList.isNotEmpty) {
+        coupleData = coupleList.firstWhere(
+          (c) => c['user_2'] != null,
+          orElse: () => coupleList.first,
+        );
+      }
 
       if (coupleData != null) {
         _couple = Couple.fromJson(coupleData);
 
-        // Load partner profile
-        final partnerId = _couple!.partnerId(userId);
-        final partnerData = await _client
-            .from('profiles')
-            .select()
-            .eq('id', partnerId)
-            .maybeSingle();
+        // Load partner profile (only if fully paired)
+        if (coupleData['user_2'] != null) {
+          final partnerId = _couple!.partnerId(userId);
+          final partnerData = await _client
+              .from('profiles')
+              .select()
+              .eq('id', partnerId)
+              .maybeSingle();
 
-        if (partnerData != null) {
-          _partnerProfile = Profile.fromJson(partnerData);
+          if (partnerData != null) {
+            _partnerProfile = Profile.fromJson(partnerData);
+          }
         }
       }
     } catch (e) {
@@ -252,8 +263,35 @@ class AuthService extends ChangeNotifier {
 
   /// Create a couple entry with an invite code (creator flow).
   Future<String> createCouple() async {
-    final code = generateInviteCode();
     final userId = currentUser!.id;
+
+    // Check if user already has unpaired couples (handle duplicates from previous attempts)
+    final existingList = await _client
+        .from('couples')
+        .select()
+        .eq('user_1', userId)
+        .isFilter('user_2', null)
+        .order('paired_at', ascending: false);
+
+    if (existingList.isNotEmpty) {
+      // If any existing row has an active invite code, reuse it
+      for (final row in existingList) {
+        if (row['invite_code'] != null) {
+          return row['invite_code'] as String;
+        }
+      }
+
+      // All existing rows have null/burned invite codes — update the first one with a new code
+      final code = generateInviteCode();
+      final staleId = existingList.first['id'];
+      await _client.from('couples').update({
+        'invite_code': code,
+      }).eq('id', staleId);
+      return code;
+    }
+
+    // No existing unpaired couple — create a new one
+    final code = generateInviteCode();
 
     await _client.from('couples').insert({
       'user_1': userId,
@@ -266,28 +304,47 @@ class AuthService extends ChangeNotifier {
   /// Join an existing couple with an invite code (partner flow).
   Future<bool> joinCouple(String code) async {
     final userId = currentUser!.id;
+    final normalizedCode = code.toUpperCase().trim();
 
-    // Find the couple with this invite code
-    final coupleData = await _client
-        .from('couples')
-        .select()
-        .eq('invite_code', code.toUpperCase().trim())
-        .isFilter('user_2', null)
-        .maybeSingle();
+    debugPrint('[joinCouple] Attempting to join with code: $normalizedCode');
 
-    if (coupleData == null) return false;
+    try {
+      // Find the couple with this invite code
+      final coupleData = await _client
+          .from('couples')
+          .select()
+          .eq('invite_code', normalizedCode)
+          .isFilter('user_2', null)
+          .maybeSingle();
 
-    // Update couple with partner
-    await _client.from('couples').update({
-      'user_2': userId,
-      'invite_code': null, // Burn the code
-    }).eq('id', coupleData['id']);
+      debugPrint('[joinCouple] Query result: $coupleData');
 
-    // Seed default channels for this couple
-    await _seedDefaultChannels(coupleData['id'] as String);
+      if (coupleData == null) {
+        debugPrint('[joinCouple] No matching couple found for code: $normalizedCode');
+        return false;
+      }
 
-    await loadUserData();
-    return true;
+      // Don't let user pair with themselves
+      if (coupleData['user_1'] == userId) {
+        debugPrint('[joinCouple] User tried to join their own couple');
+        return false;
+      }
+
+      // Update couple with partner
+      await _client.from('couples').update({
+        'user_2': userId,
+        'invite_code': null, // Burn the code
+      }).eq('id', coupleData['id']);
+
+      // Seed default channels for this couple
+      await _seedDefaultChannels(coupleData['id'] as String);
+
+      await loadUserData();
+      return true;
+    } catch (e) {
+      debugPrint('[joinCouple] Error: $e');
+      rethrow;
+    }
   }
 
   /// Seed the default channels for a newly formed couple.
