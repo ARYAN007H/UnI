@@ -3,21 +3,25 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import '../../config/theme.dart';
 import '../../models/models.dart';
 import '../../services/auth_service.dart';
 import '../../services/chat_service.dart';
+import '../../services/media_service.dart';
 import '../../services/presence_service.dart';
 import '../../widgets/message_bubble.dart';
 import '../../widgets/responsive_wrapper.dart';
 import '../../widgets/typing_indicator.dart';
+import '../../widgets/voice_recorder.dart';
 
 class GeneralChatScreen extends StatefulWidget {
   final Channel channel;
   final AuthService authService;
   final ChatService chatService;
   final PresenceService presenceService;
+  final MediaService mediaService;
 
   const GeneralChatScreen({
     super.key,
@@ -25,6 +29,7 @@ class GeneralChatScreen extends StatefulWidget {
     required this.authService,
     required this.chatService,
     required this.presenceService,
+    required this.mediaService,
   });
 
   @override
@@ -37,6 +42,8 @@ class _GeneralChatScreenState extends State<GeneralChatScreen> with WidgetsBindi
   final _focusNode = FocusNode();
   Timer? _typingTimer;
   String? _replyToId;
+  bool _hasText = false;
+  bool _isUploadingMedia = false;
   static const _quickEmojis = ['❤️', '🥰', '😘', '💕', '🔥', '😍', '🤗', '💋'];
 
   @override
@@ -45,6 +52,10 @@ class _GeneralChatScreenState extends State<GeneralChatScreen> with WidgetsBindi
     WidgetsBinding.instance.addObserver(this);
     _loadAndSubscribe();
     _scrollController.addListener(_onScroll);
+    _controller.addListener(() {
+      final hasText = _controller.text.trim().isNotEmpty;
+      if (hasText != _hasText) setState(() => _hasText = hasText);
+    });
   }
 
   Future<void> _loadAndSubscribe() async {
@@ -90,6 +101,106 @@ class _GeneralChatScreenState extends State<GeneralChatScreen> with WidgetsBindi
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed: $e')));
     }
+  }
+
+  // ── Media Sending ──────────────────────────────────────────
+
+  Future<void> _pickAndSendImage(ImageSource source) async {
+    final file = await widget.mediaService.pickImage(source: source);
+    if (file == null) return;
+    await _sendMediaFile(file, MessageType.image);
+  }
+
+  Future<void> _sendMediaFile(XFile file, MessageType type, {int? durationMs}) async {
+    final couple = widget.authService.couple;
+    if (couple == null) return;
+
+    setState(() => _isUploadingMedia = true);
+    try {
+      await widget.chatService.sendMediaMessage(
+        channelId: widget.channel.id,
+        senderId: widget.authService.currentUser!.id,
+        coupleId: couple.id,
+        mediaService: widget.mediaService,
+        file: file,
+        type: type,
+        caption: null,
+        durationMs: durationMs,
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to send media: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isUploadingMedia = false);
+    }
+  }
+
+  void _showAttachmentOptions() {
+    HapticFeedback.lightImpact();
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        padding: EdgeInsets.fromLTRB(24, 20, 24, MediaQuery.of(ctx).padding.bottom + 20),
+        decoration: BoxDecoration(
+          color: AppTheme.surfaceContainer,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          border: Border(top: BorderSide(color: AppTheme.outline.withValues(alpha: 0.2))),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Center(child: Container(width: 36, height: 4, decoration: BoxDecoration(color: AppTheme.outline, borderRadius: BorderRadius.circular(2)))),
+            const SizedBox(height: 20),
+            Text('Send Media', style: Theme.of(ctx).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600)),
+            const SizedBox(height: 20),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                _attachOption(ctx, Icons.photo_library_rounded, 'Gallery', AppTheme.secondary, () {
+                  Navigator.pop(ctx);
+                  _pickAndSendImage(ImageSource.gallery);
+                }),
+                _attachOption(ctx, Icons.camera_alt_rounded, 'Camera', AppTheme.primary, () {
+                  Navigator.pop(ctx);
+                  _pickAndSendImage(ImageSource.camera);
+                }),
+                _attachOption(ctx, Icons.videocam_rounded, 'Video', AppTheme.tertiary, () async {
+                  Navigator.pop(ctx);
+                  final file = await widget.mediaService.pickVideo();
+                  if (file != null) _sendMediaFile(file, MessageType.video);
+                }),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _attachOption(BuildContext ctx, IconData icon, String label, Color color, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 56, height: 56,
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.1),
+              shape: BoxShape.circle,
+              border: Border.all(color: color.withValues(alpha: 0.2)),
+            ),
+            child: Icon(icon, color: color, size: 26),
+          ),
+          const SizedBox(height: 8),
+          Text(label, style: TextStyle(color: AppTheme.onSurfaceVariant, fontSize: 12, fontWeight: FontWeight.w500)),
+        ],
+      ),
+    );
   }
 
   @override
@@ -151,6 +262,23 @@ class _GeneralChatScreenState extends State<GeneralChatScreen> with WidgetsBindi
             ]);
           },
         )),
+        // Upload progress
+        if (_isUploadingMedia)
+          ListenableBuilder(
+            listenable: widget.mediaService,
+            builder: (_, __) => Container(
+              margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(4),
+                child: LinearProgressIndicator(
+                  value: widget.mediaService.uploadProgress > 0 ? widget.mediaService.uploadProgress : null,
+                  backgroundColor: AppTheme.surfaceContainerHigh,
+                  color: AppTheme.primary,
+                  minHeight: 3,
+                ),
+              ),
+            ),
+          ),
         ListenableBuilder(listenable: widget.chatService, builder: (_, __) {
           if (!widget.chatService.partnerIsTyping) return const SizedBox.shrink();
           return Padding(padding: const EdgeInsets.only(left: 16, bottom: 4), child: Align(alignment: Alignment.centerLeft, child: TypingIndicatorWidget(name: widget.authService.partnerProfile?.displayName ?? 'Partner', isVanillaMode: widget.authService.couple?.isVanillaMode ?? false)));
@@ -192,11 +320,37 @@ class _GeneralChatScreenState extends State<GeneralChatScreen> with WidgetsBindi
       if (_replyToId != null) Container(margin: const EdgeInsets.only(bottom: 8), padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10), decoration: BoxDecoration(color: AppTheme.primary.withValues(alpha: 0.06), borderRadius: BorderRadius.circular(14), border: Border(left: BorderSide(color: AppTheme.primary, width: 3))),
         child: Row(children: [Icon(Icons.reply_rounded, size: 16, color: AppTheme.primary.withValues(alpha: 0.6)), const SizedBox(width: 8), Expanded(child: Text('Replying...', style: TextStyle(fontSize: 13, color: AppTheme.onSurfaceVariant))), GestureDetector(onTap: () => setState(() => _replyToId = null), child: Icon(Icons.close_rounded, size: 18, color: AppTheme.onSurfaceVariant.withValues(alpha: 0.6)))])),
       Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+        // Attachment button
+        GestureDetector(
+          onTap: _showAttachmentOptions,
+          child: Container(
+            width: 42, height: 42,
+            margin: const EdgeInsets.only(bottom: 3),
+            decoration: BoxDecoration(
+              color: c.accent.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Icon(Icons.add_rounded, color: c.accent, size: 22),
+          ),
+        ),
+        const SizedBox(width: 8),
         Expanded(child: Container(decoration: BoxDecoration(color: AppTheme.surfaceContainerHigh.withValues(alpha: 0.5), borderRadius: BorderRadius.circular(24), border: Border.all(color: AppTheme.outlineVariant)),
           child: TextField(controller: _controller, focusNode: _focusNode, onChanged: _onTextChanged, onSubmitted: (_) => _sendMessage(), decoration: InputDecoration(hintText: 'Type a love note...', hintStyle: TextStyle(color: AppTheme.onSurfaceVariant.withValues(alpha: 0.4), fontSize: 15), contentPadding: const EdgeInsets.fromLTRB(20, 12, 12, 12), border: InputBorder.none, enabledBorder: InputBorder.none, focusedBorder: InputBorder.none), textInputAction: TextInputAction.send, maxLines: 4, minLines: 1, style: TextStyle(color: AppTheme.onSurface, fontSize: 15)))),
         const SizedBox(width: 8),
-        Container(width: 48, height: 48, decoration: BoxDecoration(gradient: LinearGradient(colors: [c.gradientStart, c.gradientEnd]), borderRadius: BorderRadius.circular(16), boxShadow: [BoxShadow(color: c.accent.withValues(alpha: 0.3), blurRadius: 10, offset: const Offset(0, 2))]),
-          child: Material(color: Colors.transparent, child: InkWell(onTap: () => _sendMessage(), borderRadius: BorderRadius.circular(16), child: const Icon(Icons.send_rounded, color: Colors.white, size: 20)))),
+        // Send or Voice record button
+        if (_hasText)
+          Container(width: 48, height: 48, decoration: BoxDecoration(gradient: LinearGradient(colors: [c.gradientStart, c.gradientEnd]), borderRadius: BorderRadius.circular(16), boxShadow: [BoxShadow(color: c.accent.withValues(alpha: 0.3), blurRadius: 10, offset: const Offset(0, 2))]),
+            child: Material(color: Colors.transparent, child: InkWell(onTap: () => _sendMessage(), borderRadius: BorderRadius.circular(16), child: const Icon(Icons.send_rounded, color: Colors.white, size: 20))))
+        else
+          VoiceRecorder(
+            accentColor: c.accent,
+            onRecordingComplete: (path, duration) {
+              // TODO: Send voice message once recording is fully wired
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Voice recording coming soon!')),
+              );
+            },
+          ),
       ]),
     ]),
   );

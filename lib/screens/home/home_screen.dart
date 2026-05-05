@@ -5,7 +5,9 @@ import '../../config/theme.dart';
 import '../../models/models.dart';
 import '../../services/auth_service.dart';
 import '../../services/chat_service.dart';
+import '../../services/media_service.dart';
 import '../../services/presence_service.dart';
+import '../../services/backup_service.dart';
 import '../../widgets/channel_card.dart';
 import '../../widgets/couple_header.dart';
 import '../../widgets/quick_actions.dart';
@@ -15,17 +17,22 @@ import '../chat/photos_screen.dart';
 import '../chat/plans_screen.dart';
 import '../chat/random_screen.dart';
 import '../chat/chat_screen.dart';
+import '../globe/memory_globe_screen.dart';
 
 class HomeScreen extends StatelessWidget {
   final AuthService authService;
   final ChatService chatService;
   final PresenceService presenceService;
+  final MediaService mediaService;
+  final BackupService backupService;
 
   const HomeScreen({
     super.key,
     required this.authService,
     required this.chatService,
     required this.presenceService,
+    required this.mediaService,
+    required this.backupService,
   });
 
   @override
@@ -66,6 +73,14 @@ class HomeScreen extends StatelessWidget {
                     authService: authService,
                     chatService: chatService,
                   ).animate().fadeIn(delay: 200.ms, duration: 400.ms),
+                ),
+                const SliverToBoxAdapter(child: SizedBox(height: 16)),
+                // Memory Globe Banner
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: _buildMemoryGlobeBanner(context),
+                  ).animate().fadeIn(delay: 220.ms, duration: 400.ms),
                 ),
                 const SliverToBoxAdapter(child: SizedBox(height: 24)),
                 // Channels section header
@@ -246,6 +261,74 @@ class HomeScreen extends StatelessWidget {
     ).animate().fadeIn(duration: 400.ms).slideY(begin: -0.1, end: 0);
   }
 
+  Widget _buildMemoryGlobeBanner(BuildContext context) {
+    return GestureDetector(
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => MemoryGlobeScreen(
+              chatService: chatService,
+              authService: authService,
+            ),
+          ),
+        );
+      },
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [
+              const Color(0xFF1E2430),
+              AppTheme.primary.withValues(alpha: 0.15),
+            ],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: AppTheme.outline.withValues(alpha: 0.1),
+          ),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.1),
+                shape: BoxShape.circle,
+              ),
+              child: const Text('🌍', style: TextStyle(fontSize: 24)),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '3D Memory Globe',
+                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white,
+                        ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Explore your geotagged memories',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: AppTheme.onSurfaceVariant,
+                        ),
+                  ),
+                ],
+              ),
+            ),
+            Icon(Icons.chevron_right_rounded, color: AppTheme.onSurfaceVariant),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildChannelList(BuildContext context) {
     return ListenableBuilder(
       listenable: chatService,
@@ -341,6 +424,7 @@ class HomeScreen extends StatelessWidget {
           authService: authService,
           chatService: chatService,
           presenceService: presenceService,
+          mediaService: mediaService,
         );
         break;
       case ChannelType.photos:
@@ -349,6 +433,7 @@ class HomeScreen extends StatelessWidget {
           authService: authService,
           chatService: chatService,
           presenceService: presenceService,
+          mediaService: mediaService,
         );
         break;
       case ChannelType.plans:
@@ -792,6 +877,72 @@ class HomeScreen extends StatelessWidget {
                     onChanged: (val) {
                       authService.toggleVanillaMode(val);
                     },
+                  );
+                },
+              ),
+              
+              const Divider(height: 1),
+              
+              // Backup & Restore
+              ListenableBuilder(
+                listenable: backupService,
+                builder: (context, _) {
+                  final hasAccount = backupService.isSignedIn;
+                  final isBackingUp = backupService.isBackingUp;
+                  final isRestoring = backupService.isRestoring;
+                  
+                  return Column(
+                    children: [
+                      ListTile(
+                        leading: Icon(Icons.cloud_sync_rounded, color: AppTheme.primary, size: 22),
+                        title: Text('Google Drive Backup', style: TextStyle(fontWeight: FontWeight.w600, color: AppTheme.onSurface)),
+                        subtitle: Text(
+                          hasAccount ? 'Connected' : 'Not Connected',
+                          style: TextStyle(fontSize: 12, color: AppTheme.onSurfaceVariant),
+                        ),
+                        trailing: isBackingUp || isRestoring
+                            ? SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.primary))
+                            : null,
+                        onTap: () async {
+                          if (!hasAccount) {
+                            await backupService.signIn();
+                          }
+                        },
+                      ),
+                      if (hasAccount)
+                        Padding(
+                          padding: const EdgeInsets.only(left: 16, right: 16, bottom: 8),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: ElevatedButton.icon(
+                                  onPressed: isBackingUp || isRestoring ? null : () => backupService.backup(),
+                                  icon: const Icon(Icons.upload_rounded, size: 16),
+                                  label: const Text('Backup Now'),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: AppTheme.primary.withValues(alpha: 0.1),
+                                    foregroundColor: AppTheme.primary,
+                                    elevation: 0,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: ElevatedButton.icon(
+                                  onPressed: isBackingUp || isRestoring ? null : () => backupService.restore(),
+                                  icon: const Icon(Icons.download_rounded, size: 16),
+                                  label: const Text('Restore'),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: AppTheme.surfaceContainer,
+                                    foregroundColor: AppTheme.onSurfaceVariant,
+                                    elevation: 0,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                    ],
                   );
                 },
               ),

@@ -5,19 +5,24 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'config/supabase_config.dart';
 import 'config/theme.dart';
 import 'services/auth_service.dart';
+import 'services/backup_service.dart';
 import 'services/chat_service.dart';
+import 'services/local_cache_service.dart';
+import 'services/media_service.dart';
+import 'services/notification_service.dart';
+import 'services/permission_service.dart';
 import 'services/presence_service.dart';
 import 'screens/auth/login_screen.dart';
 import 'screens/auth/pair_screen.dart';
 import 'screens/auth/verify_email_screen.dart';
 import 'screens/home/home_screen.dart';
+import 'screens/setup/permission_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  
+
   await dotenv.load(fileName: ".env");
 
-  // Immersive warm dark system UI
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
@@ -32,11 +37,17 @@ void main() async {
     anonKey: SupabaseConfig.anonKey,
   );
 
-  runApp(const UAndI());
+  // Initialize local cache early
+  final localCache = LocalCacheService();
+  await localCache.initialize();
+
+  runApp(UAndI(localCacheService: localCache));
 }
 
 class UAndI extends StatefulWidget {
-  const UAndI({super.key});
+  final LocalCacheService localCacheService;
+
+  const UAndI({super.key, required this.localCacheService});
 
   @override
   State<UAndI> createState() => _UAndIState();
@@ -46,6 +57,12 @@ class _UAndIState extends State<UAndI> {
   late final AuthService _authService;
   late final ChatService _chatService;
   late final PresenceService _presenceService;
+  late final MediaService _mediaService;
+  late final NotificationService _notificationService;
+  late final PermissionService _permissionService;
+  late final BackupService _backupService;
+
+  String? _lastThemeColorHex;
 
   @override
   void initState() {
@@ -53,12 +70,23 @@ class _UAndIState extends State<UAndI> {
     _authService = AuthService();
     _chatService = ChatService();
     _presenceService = PresenceService();
+    _mediaService = MediaService(cache: widget.localCacheService);
+    _notificationService = NotificationService();
+    _permissionService = PermissionService();
+    _backupService = BackupService(widget.localCacheService);
+
+    _permissionService.initialize();
+    _backupService.initialize();
     _authService.addListener(_onAuthChanged);
   }
 
   void _onAuthChanged() {
     if (_authService.couple != null && _authService.currentUser != null) {
-      _chatService.initialize(_authService.couple!.id);
+      _chatService.initialize(
+        _authService.couple!.id,
+        cache: widget.localCacheService,
+        mediaService: _mediaService,
+      );
       _presenceService.subscribe(
         _authService.couple!.id,
         _authService.currentUser!.id,
@@ -67,6 +95,13 @@ class _UAndIState extends State<UAndI> {
         _authService.couple!.id,
         _authService.currentUser!.id,
       );
+      _notificationService.initialize(_authService.currentUser!.id);
+
+      final newColorHex = _authService.couple!.themeColorHex;
+      if (newColorHex != _lastThemeColorHex) {
+        _lastThemeColorHex = newColorHex;
+        AppTheme.initializeTheme(newColorHex);
+      }
     }
   }
 
@@ -76,6 +111,9 @@ class _UAndIState extends State<UAndI> {
     _authService.dispose();
     _chatService.dispose();
     _presenceService.dispose();
+    _mediaService.dispose();
+    _notificationService.dispose();
+    widget.localCacheService.close();
     super.dispose();
   }
 
@@ -84,9 +122,12 @@ class _UAndIState extends State<UAndI> {
     return ListenableBuilder(
       listenable: _authService,
       builder: (context, _) {
-        // Initialize theme before building the app
         if (_authService.couple != null) {
-          AppTheme.initializeTheme(_authService.couple!.themeColorHex);
+          final newColorHex = _authService.couple!.themeColorHex;
+          if (newColorHex != _lastThemeColorHex) {
+            _lastThemeColorHex = newColorHex;
+            AppTheme.initializeTheme(newColorHex);
+          }
         }
 
         return MaterialApp(
@@ -95,13 +136,10 @@ class _UAndIState extends State<UAndI> {
           theme: AppTheme.darkTheme,
           home: Builder(
             builder: (context) {
-              if (_authService.loading) {
-                return const _SplashScreen();
-              }
+              if (_authService.loading) return const _SplashScreen();
               if (!_authService.isLoggedIn) {
                 return LoginScreen(authService: _authService);
               }
-              // Enforce email verification after 24-hour grace period
               if (!_authService.isEmailVerified &&
                   _authService.isGracePeriodExpired) {
                 return VerifyEmailScreen(authService: _authService);
@@ -109,10 +147,25 @@ class _UAndIState extends State<UAndI> {
               if (_authService.couple == null) {
                 return PairScreen(authService: _authService);
               }
-              return HomeScreen(
-                authService: _authService,
-                chatService: _chatService,
-                presenceService: _presenceService,
+              // Show permission setup on first launch
+              return ListenableBuilder(
+                listenable: _permissionService,
+                builder: (context, _) {
+                  if (!_permissionService.setupComplete) {
+                    return PermissionScreen(
+                      permissionService: _permissionService,
+                      backupService: _backupService,
+                      onComplete: () => setState(() {}),
+                    );
+                  }
+                  return HomeScreen(
+                    authService: _authService,
+                    chatService: _chatService,
+                    presenceService: _presenceService,
+                    mediaService: _mediaService,
+                    backupService: _backupService,
+                  );
+                },
               );
             },
           ),
@@ -122,7 +175,6 @@ class _UAndIState extends State<UAndI> {
   }
 }
 
-// ── Splash Screen ────────────────────────────────────────────
 class _SplashScreen extends StatelessWidget {
   const _SplashScreen();
 
@@ -135,17 +187,12 @@ class _SplashScreen extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Warm pulsing heart
               TweenAnimationBuilder<double>(
                 tween: Tween(begin: 0.85, end: 1.0),
                 duration: const Duration(milliseconds: 1200),
                 curve: Curves.easeInOut,
-                builder: (context, value, child) {
-                  return Transform.scale(
-                    scale: value,
-                    child: child,
-                  );
-                },
+                builder: (context, value, child) =>
+                    Transform.scale(scale: value, child: child),
                 child: Container(
                   width: 88,
                   height: 88,
@@ -160,11 +207,8 @@ class _SplashScreen extends StatelessWidget {
                       ),
                     ],
                   ),
-                  child: const Icon(
-                    Icons.favorite_rounded,
-                    size: 44,
-                    color: Colors.white,
-                  ),
+                  child: const Icon(Icons.favorite_rounded,
+                      size: 44, color: Colors.white),
                 ),
               ),
               const SizedBox(height: 28),

@@ -1,16 +1,23 @@
 import 'dart:convert';
 import 'dart:math';
 import 'package:flutter/foundation.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 import '../config/supabase_config.dart';
 import '../models/models.dart';
+import 'local_cache_service.dart';
+import 'media_service.dart';
 
-/// Handles all chat-related data operations with Supabase.
+/// Handles all chat-related data operations.
+/// Uses a local-first architecture: SQLite cache for instant reads,
+/// Supabase for sync and real-time.
 class ChatService extends ChangeNotifier {
   final SupabaseClient _client = Supabase.instance.client;
   static const _uuid = Uuid();
   static const int _pageSize = 50;
+  LocalCacheService? _cache;
+  MediaService? _mediaService;
 
   String? _coupleId;
   List<Channel> _channels = [];
@@ -37,16 +44,52 @@ class ChatService extends ChangeNotifier {
   int _currentPromptIndex = 0;
 
   /// Initialize with couple ID and load channels.
-  Future<void> initialize(String coupleId) async {
+  /// Accepts an optional LocalCacheService for offline-first support.
+  Future<void> initialize(String coupleId, {LocalCacheService? cache, MediaService? mediaService}) async {
     _coupleId = coupleId;
+    _cache = cache;
+    _mediaService = mediaService;
     _currentPromptIndex = _random.nextInt(SupabaseConfig.conversationPrompts.length);
     await loadChannels();
+    // Flush any offline queue
+    _syncOfflineMessages();
   }
 
-  /// Fetch all channels for the couple, sorted by position.
+  /// Sync any messages that were saved locally but failed to send to Supabase.
+  Future<void> _syncOfflineMessages() async {
+    if (_cache == null) return;
+    
+    final unsynced = await _cache!.getUnsyncedMessages();
+    if (unsynced.isEmpty) return;
+
+    debugPrint('[ChatService] Syncing ${unsynced.length} offline messages...');
+    
+    for (final msg in unsynced) {
+      try {
+        await _client.from('messages').insert(msg.toInsertJson());
+        await _cache!.markSynced(msg.id);
+        debugPrint('[ChatService] Synced message ${msg.id}');
+      } catch (e) {
+        debugPrint('[ChatService] Failed to sync message ${msg.id}: $e');
+        // Will retry on next init
+      }
+    }
+  }
+
+  /// Fetch channels — cache-first, then sync from server.
   Future<void> loadChannels() async {
     if (_coupleId == null) return;
 
+    // 1. Load from cache instantly
+    if (_cache != null) {
+      final cached = await _cache!.getChannels(_coupleId!);
+      if (cached.isNotEmpty) {
+        _channels = cached;
+        notifyListeners();
+      }
+    }
+
+    // 2. Sync from server in background
     try {
       final data = await _client
           .from('channels')
@@ -55,24 +98,37 @@ class ChatService extends ChangeNotifier {
           .order('position');
 
       _channels = data.map((json) => Channel.fromJson(json)).toList();
+      _cache?.saveChannels(_channels);
       notifyListeners();
     } catch (e) {
       debugPrint('Error loading channels: $e');
     }
   }
 
-  /// Fetch paginated messages for a channel.
+  /// Fetch messages — cache-first, then sync from server.
   Future<void> loadMessages(String channelId, {bool loadMore = false}) async {
+    final existing = _messagesByChannel[channelId] ?? [];
+
+    // 1. Load from cache instantly (only on first load)
+    if (!loadMore && _cache != null && existing.isEmpty) {
+      final cached = await _cache!.getMessages(channelId, limit: _pageSize);
+      if (cached.isNotEmpty) {
+        _messagesByChannel[channelId] = cached;
+        notifyListeners();
+      }
+    }
+
+    // 2. Sync from server
     try {
-      final existing = _messagesByChannel[channelId] ?? [];
+      final current = _messagesByChannel[channelId] ?? [];
 
       PostgrestFilterBuilder<List<Map<String, dynamic>>> filterQuery = _client
           .from('messages')
           .select()
           .eq('channel_id', channelId);
 
-      if (loadMore && existing.isNotEmpty) {
-        filterQuery = filterQuery.lt('created_at', existing.last.createdAt.toIso8601String());
+      if (loadMore && current.isNotEmpty) {
+        filterQuery = filterQuery.lt('created_at', current.last.createdAt.toIso8601String());
       }
 
       final data = await filterQuery
@@ -81,13 +137,60 @@ class ChatService extends ChangeNotifier {
       final messages = data.map((json) => Message.fromJson(json)).toList();
 
       if (loadMore) {
-        _messagesByChannel[channelId] = [...existing, ...messages];
+        _messagesByChannel[channelId] = [...current, ...messages];
       } else {
         _messagesByChannel[channelId] = messages;
       }
+
+      // Save to cache
+      _cache?.saveMessages(messages);
+      
+      // Auto-download media
+      for (final msg in messages) {
+        if (msg.mediaUrl != null) {
+          _mediaService?.downloadMedia(msg.mediaUrl!);
+        }
+      }
+      
       notifyListeners();
     } catch (e) {
       debugPrint('Error loading messages: $e');
+      // If server fails, we still have cached data — no crash
+    }
+  }
+
+  /// Get all messages that have location data (for the Memory Globe).
+  Future<List<Message>> getMessagesWithLocation() async {
+    if (_coupleId == null) return [];
+    
+    // Fallback to cache if offline
+    if (_cache != null) {
+      try {
+        final cached = await _cache!.getMessagesWithLocation();
+        if (cached.isNotEmpty) {
+          return cached;
+        }
+      } catch (e) {
+        debugPrint('Local cache error: $e');
+      }
+    }
+
+    try {
+      final data = await _client
+          .from('messages')
+          .select('*, channels!inner(couple_id)')
+          .eq('channels.couple_id', _coupleId!)
+          .not('latitude', 'is', null)
+          .not('longitude', 'is', null);
+
+      return data.map((json) {
+        // Remove the joined channels object to match Message model
+        final cleanJson = Map<String, dynamic>.from(json)..remove('channels');
+        return Message.fromJson(cleanJson);
+      }).toList();
+    } catch (e) {
+      debugPrint('Error loading messages with location: $e');
+      return [];
     }
   }
 
@@ -121,13 +224,83 @@ class ChatService extends ChangeNotifier {
     _messagesByChannel[channelId] = [optimistic, ...messages];
     notifyListeners();
 
+    // Save to local cache immediately (offline support)
+    _cache?.saveMessage(optimistic, synced: false);
+
+    try {
+      await _client.from('messages').insert(optimistic.toInsertJson());
+      _cache?.markSynced(id);
+    } catch (e) {
+      // Keep in cache with is_synced=false for retry
+      // Only remove from UI if it's a permanent error
+      debugPrint('Error sending message: $e');
+      rethrow;
+    }
+  }
+
+  /// Send a media message (image, video, or voice).
+  /// Picks/receives a file, uploads via MediaService, then sends the message.
+  Future<void> sendMediaMessage({
+    required String channelId,
+    required String senderId,
+    required String coupleId,
+    required MediaService mediaService,
+    required XFile file,
+    required MessageType type,
+    String? caption,
+    int? durationMs,
+  }) async {
+    final mediaType = type == MessageType.image
+        ? MediaType.image
+        : type == MessageType.video
+            ? MediaType.video
+            : MediaType.voice;
+
+    final result = await mediaService.uploadFile(
+      coupleId: coupleId,
+      file: file,
+      type: mediaType,
+    );
+
+    if (result == null) {
+      throw Exception('Upload failed');
+    }
+
+    LocationData? location;
+    if (type == MessageType.image) {
+      location = await mediaService.extractLocationFromImage(file);
+    }
+
+    final id = _uuid.v4();
+    final now = DateTime.now();
+
+    // Optimistic message
+    final optimistic = Message(
+      id: id,
+      channelId: channelId,
+      senderId: senderId,
+      content: caption,
+      type: type,
+      mediaUrl: result.url,
+      mediaSizeBytes: result.sizeBytes,
+      mediaDurationMs: durationMs,
+      latitude: location?.latitude,
+      longitude: location?.longitude,
+      readBy: [senderId],
+      createdAt: now,
+      updatedAt: now,
+      isPending: true,
+    );
+
+    final messages = _messagesByChannel[channelId] ?? [];
+    _messagesByChannel[channelId] = [optimistic, ...messages];
+    notifyListeners();
+
     try {
       await _client.from('messages').insert(optimistic.toInsertJson());
     } catch (e) {
-      // Remove the optimistic message on failure
       _messagesByChannel[channelId]?.removeWhere((m) => m.id == id);
       notifyListeners();
-      debugPrint('Error sending message: $e');
       rethrow;
     }
   }
@@ -153,6 +326,14 @@ class ChatService extends ChangeNotifier {
           callback: (payload) {
             final newMessage = Message.fromJson(payload.newRecord);
             final messages = _messagesByChannel[channelId] ?? [];
+
+            // Save to local cache
+            _cache?.saveMessage(newMessage);
+
+            // Auto-download media
+            if (newMessage.mediaUrl != null) {
+              _mediaService?.downloadMedia(newMessage.mediaUrl!);
+            }
 
             // Don't add if already exists (optimistic insert)
             if (!messages.any((m) => m.id == newMessage.id)) {
@@ -220,24 +401,14 @@ class ChatService extends ChangeNotifier {
   // ── Read Receipts ──────────────────────────────────────────
 
   /// Mark messages as read by the current user.
+  /// Uses a batch RPC call to avoid N+1 individual UPDATE queries.
   Future<void> markMessagesAsRead(String channelId, String userId) async {
     try {
-      // Get unread messages in this channel
-      final unread = await _client
-          .from('messages')
-          .select('id, read_by')
-          .eq('channel_id', channelId)
-          .not('read_by', 'cs', '{$userId}');
-
-      for (final msg in unread) {
-        final readBy = List<String>.from(msg['read_by'] as List? ?? []);
-        if (!readBy.contains(userId)) {
-          readBy.add(userId);
-          await _client
-              .from('messages')
-              .update({'read_by': readBy}).eq('id', msg['id']);
-        }
-      }
+      // Batch update via Postgres function
+      await _client.rpc('batch_mark_read', params: {
+        'p_channel_id': channelId,
+        'p_user_id': userId,
+      });
 
       // Update local state
       final messages = _messagesByChannel[channelId];
@@ -252,6 +423,9 @@ class ChatService extends ChangeNotifier {
               content: messages[i].content,
               type: messages[i].type,
               mediaUrl: messages[i].mediaUrl,
+              mediaThumbnailUrl: messages[i].mediaThumbnailUrl,
+              mediaDurationMs: messages[i].mediaDurationMs,
+              mediaSizeBytes: messages[i].mediaSizeBytes,
               replyTo: messages[i].replyTo,
               isEdited: messages[i].isEdited,
               isDeleted: messages[i].isDeleted,

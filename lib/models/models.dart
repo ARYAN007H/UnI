@@ -1,5 +1,6 @@
 // Data models for the Couple Chat application.
 // Matches the Supabase PostgreSQL schema.
+import 'dart:convert';
 
 class Profile {
   final String id;
@@ -250,6 +251,11 @@ class Message {
   final String? content;
   final MessageType type;
   final String? mediaUrl;
+  final String? mediaThumbnailUrl;
+  final int? mediaDurationMs;
+  final int? mediaSizeBytes;
+  final double? latitude;
+  final double? longitude;
   final String? replyTo;
   final bool isEdited;
   final bool isDeleted;
@@ -266,6 +272,11 @@ class Message {
     this.content,
     this.type = MessageType.text,
     this.mediaUrl,
+    this.mediaThumbnailUrl,
+    this.mediaDurationMs,
+    this.mediaSizeBytes,
+    this.latitude,
+    this.longitude,
     this.replyTo,
     this.isEdited = false,
     this.isDeleted = false,
@@ -283,6 +294,11 @@ class Message {
       content: json['content'] as String?,
       type: _parseMessageType(json['type'] as String?),
       mediaUrl: json['media_url'] as String?,
+      mediaThumbnailUrl: json['media_thumbnail_url'] as String?,
+      mediaDurationMs: json['media_duration_ms'] as int?,
+      mediaSizeBytes: json['media_size_bytes'] as int?,
+      latitude: (json['latitude'] as num?)?.toDouble(),
+      longitude: (json['longitude'] as num?)?.toDouble(),
       replyTo: json['reply_to'] as String?,
       isEdited: json['is_edited'] as bool? ?? false,
       isDeleted: json['is_deleted'] as bool? ?? false,
@@ -299,6 +315,11 @@ class Message {
         'content': content,
         'type': type.name,
         'media_url': mediaUrl,
+        'media_thumbnail_url': mediaThumbnailUrl,
+        'media_duration_ms': mediaDurationMs,
+        'media_size_bytes': mediaSizeBytes,
+        'latitude': latitude,
+        'longitude': longitude,
         'reply_to': replyTo,
       };
 
@@ -385,13 +406,8 @@ class Plan {
   }
 
   static Map<String, dynamic> _parseJsonContent(String content) {
-    // Simple JSON parser for plan content
-    // Content format: {"title":"...","description":"...","location":"...","planned_date":"...","is_completed":false}
     try {
-      // Use dart:convert
-      return Map<String, dynamic>.from(
-        Uri.splitQueryString(content).map((k, v) => MapEntry(k, v)),
-      );
+      return Map<String, dynamic>.from(jsonDecode(content) as Map);
     } catch (_) {
       return {'title': content};
     }

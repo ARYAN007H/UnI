@@ -13,15 +13,22 @@ dependencies:
   flutter_animate: ^4.5.2
   flutter_svg: ^2.2.2
   google_fonts: ^6.3.2
+  google_sign_in: ^6.2.2
+  http: ^1.2.2
   image_picker: ^1.2.1
   intl: ^0.20.2
+  path: ^1.9.0
   path_provider: ^2.1.5
+  permission_handler: ^11.3.1
   shared_preferences: ^2.5.3
   shimmer: ^3.0.0
+  sqflite: ^2.4.1
   supabase_flutter: ^2.12.4
   timeago: ^3.7.1
   uuid: ^4.5.3
   flutter_dotenv: ^5.1.0
+  flutter_earth_globe: ^2.2.1
+  exif: ^3.3.0
 
 dev_dependencies:
   flutter_test:

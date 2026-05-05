@@ -1,3 +1,4 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/physics.dart';
 import 'package:flutter/services.dart';
@@ -5,6 +6,8 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:intl/intl.dart';
 import '../config/theme.dart';
 import '../models/models.dart';
+import '../screens/chat/image_viewer_screen.dart';
+import 'voice_player.dart';
 
 class MessageBubble extends StatefulWidget {
   final Message message;
@@ -218,11 +221,16 @@ class _MessageBubbleState extends State<MessageBubble> with SingleTickerProvider
 
   Widget _buildBubble(BuildContext context) {
     final time = DateFormat.jm().format(widget.message.createdAt.toLocal());
+    final isMedia = widget.message.type == MessageType.image ||
+        widget.message.type == MessageType.video;
+    final isVoice = widget.message.type == MessageType.voice;
+    final hasMediaUrl = widget.message.mediaUrl != null && widget.message.mediaUrl!.isNotEmpty;
 
     return GestureDetector(
       onLongPress: () => _showActions(context),
+      onTap: isMedia && hasMediaUrl ? () => _openMediaViewer(context) : null,
       child: Container(
-        padding: const EdgeInsets.fromLTRB(14, 10, 14, 6),
+        constraints: isMedia ? const BoxConstraints(maxWidth: 260) : null,
         decoration: BoxDecoration(
           color: widget.isMine ? null : AppTheme.receivedBubbleColor,
           gradient: widget.isMine ? AppTheme.sentBubbleGradient : null,
@@ -238,63 +246,205 @@ class _MessageBubbleState extends State<MessageBubble> with SingleTickerProvider
                 : AppTheme.outline.withValues(alpha: 0.1),
           ),
         ),
+        clipBehavior: Clip.antiAlias,
         child: Column(
           crossAxisAlignment:
               widget.isMine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
           children: [
-            Text(
-              widget.message.content ?? '',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: AppTheme.onSurface,
-                    height: 1.4,
-                    fontSize: 15,
-                  ),
-            ),
-            const SizedBox(height: 4),
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (widget.message.isEdited)
-                  Padding(
-                    padding: const EdgeInsets.only(right: 4),
-                    child: Text(
-                      'edited',
-                      style: TextStyle(
-                        fontSize: 10,
-                        color: AppTheme.onSurfaceVariant
-                            .withValues(alpha: 0.4),
-                        fontStyle: FontStyle.italic,
+            // ── Media Content ─────────────────────────────
+            if (isMedia && hasMediaUrl) _buildMediaContent(context),
+
+            // ── Voice Content ─────────────────────────────
+            if (isVoice && hasMediaUrl)
+              VoicePlayer(
+                audioUrl: widget.message.mediaUrl!,
+                duration: widget.message.mediaDurationMs != null
+                    ? Duration(milliseconds: widget.message.mediaDurationMs!)
+                    : null,
+                isMine: widget.isMine,
+                isVanillaMode: widget.isVanillaMode,
+              ),
+
+            // ── Text Content ──────────────────────────────
+            Padding(
+              padding: EdgeInsets.fromLTRB(
+                14,
+                isMedia && hasMediaUrl ? 6 : 10,
+                14,
+                6,
+              ),
+              child: Column(
+                crossAxisAlignment: widget.isMine
+                    ? CrossAxisAlignment.end
+                    : CrossAxisAlignment.start,
+                children: [
+                  if (widget.message.content != null &&
+                      widget.message.content!.isNotEmpty &&
+                      widget.message.type != MessageType.voice)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 4),
+                      child: Text(
+                        widget.message.content!,
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                              color: AppTheme.onSurface,
+                              height: 1.4,
+                              fontSize: 15,
+                            ),
                       ),
                     ),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (widget.message.isEdited)
+                        Padding(
+                          padding: const EdgeInsets.only(right: 4),
+                          child: Text(
+                            'edited',
+                            style: TextStyle(
+                              fontSize: 10,
+                              color: AppTheme.onSurfaceVariant
+                                  .withValues(alpha: 0.4),
+                              fontStyle: FontStyle.italic,
+                            ),
+                          ),
+                        ),
+                      Text(
+                        time,
+                        style: TextStyle(
+                          fontSize: 10,
+                          color:
+                              AppTheme.onSurfaceVariant.withValues(alpha: 0.5),
+                        ),
+                      ),
+                      if (widget.isMine) ...[
+                        const SizedBox(width: 4),
+                        _readStatus(),
+                      ],
+                      if (widget.message.isPending) ...[
+                        const SizedBox(width: 4),
+                        SizedBox(
+                          width: 10,
+                          height: 10,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 1.5,
+                            color: AppTheme.onSurfaceVariant
+                                .withValues(alpha: 0.3),
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
-                Text(
-                  time,
-                  style: TextStyle(
-                    fontSize: 10,
-                    color:
-                        AppTheme.onSurfaceVariant.withValues(alpha: 0.5),
-                  ),
-                ),
-                if (widget.isMine) ...[
-                  const SizedBox(width: 4),
-                  _readStatus(),
                 ],
-                if (widget.message.isPending) ...[
-                  const SizedBox(width: 4),
-                  SizedBox(
-                    width: 10,
-                    height: 10,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 1.5,
-                      color: AppTheme.onSurfaceVariant
-                          .withValues(alpha: 0.3),
-                    ),
-                  ),
-                ],
-              ],
+              ),
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  // ── Media Content (Image/Video) ─────────────────────────
+
+  Widget _buildMediaContent(BuildContext context) {
+    final isVideo = widget.message.type == MessageType.video;
+    final heroTag = 'media_${widget.message.id}';
+
+    return Hero(
+      tag: heroTag,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          // Image
+          CachedNetworkImage(
+            imageUrl: widget.message.mediaUrl!,
+            fit: BoxFit.cover,
+            width: double.infinity,
+            // Constrain height for non-square images
+            placeholder: (context, url) => AspectRatio(
+              aspectRatio: 4 / 3,
+              child: Container(
+                color: AppTheme.surfaceContainerHigh,
+                child: Center(
+                  child: SizedBox(
+                    width: 28,
+                    height: 28,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: AppTheme.primary.withValues(alpha: 0.4),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            errorWidget: (context, url, error) => AspectRatio(
+              aspectRatio: 4 / 3,
+              child: Container(
+                color: AppTheme.surfaceContainerHigh,
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.broken_image_rounded,
+                        size: 32,
+                        color: AppTheme.onSurfaceVariant.withValues(alpha: 0.3)),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Failed to load',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: AppTheme.onSurfaceVariant.withValues(alpha: 0.4),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+
+          // Video play overlay
+          if (isVideo)
+            Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.black.withValues(alpha: 0.5),
+                border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.3), width: 1.5),
+              ),
+              child: const Icon(Icons.play_arrow_rounded,
+                  color: Colors.white, size: 28),
+            ),
+        ],
+      ),
+    );
+  }
+
+  void _openMediaViewer(BuildContext context) {
+    if (widget.message.mediaUrl == null) return;
+
+    final heroTag = 'media_${widget.message.id}';
+    final senderName = widget.isMine
+        ? 'You'
+        : (widget.partnerProfile?.displayName ?? 'Partner');
+
+    Navigator.push(
+      context,
+      PageRouteBuilder(
+        opaque: false,
+        pageBuilder: (_, __, ___) => ImageViewerScreen(
+          imageUrl: widget.message.mediaUrl!,
+          caption: widget.message.content,
+          senderName: senderName,
+          sentAt: widget.message.createdAt,
+          heroTag: heroTag,
+        ),
+        transitionsBuilder: (_, anim, __, child) {
+          return FadeTransition(
+            opacity: CurvedAnimation(parent: anim, curve: Curves.easeOut),
+            child: child,
+          );
+        },
+        transitionDuration: const Duration(milliseconds: 300),
       ),
     );
   }
