@@ -18,96 +18,173 @@ import '../chat/plans_screen.dart';
 import '../chat/random_screen.dart';
 import '../chat/chat_screen.dart';
 import '../globe/memory_globe_screen.dart';
+import '../../widgets/liquid_glass_pill.dart';
+import 'dart:ui';
 
-class HomeScreen extends StatelessWidget {
-  final AuthService authService;
-  final ChatService chatService;
-  final PresenceService presenceService;
-  final MediaService mediaService;
-  final BackupService backupService;
+class HomeScreen extends StatefulWidget {
+  final AuthService widget.authService;
+  final ChatService widget.chatService;
+  final PresenceService widget.presenceService;
+  final MediaService widget.mediaService;
+  final BackupService widget.backupService;
 
   const HomeScreen({
     super.key,
-    required this.authService,
-    required this.chatService,
-    required this.presenceService,
-    required this.mediaService,
-    required this.backupService,
+    required this.widget.authService,
+    required this.widget.chatService,
+    required this.widget.presenceService,
+    required this.widget.mediaService,
+    required this.widget.backupService,
   });
 
   @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  int _selectedPillIndex = 0;
+
+  @override
   Widget build(BuildContext context) {
-    final couple = authService.couple;
+    final couple = widget.authService.couple;
     final days = couple != null
         ? DateTime.now().difference(couple.pairedAt).inDays
         : 0;
 
     return Scaffold(
-      body: Container(
-        decoration: const BoxDecoration(gradient: AppTheme.surfaceGradient),
-        child: SafeArea(
-          child: ResponsiveWrapper(
-            maxWidth: 520,
-            child: CustomScrollView(
-              slivers: [
-                // Header with logo
-                SliverToBoxAdapter(child: _buildHeader(context)),
-                // Email verification banner
-                if (!authService.isEmailVerified)
-                  SliverToBoxAdapter(child: _buildVerificationBanner(context)),
-                const SliverToBoxAdapter(child: SizedBox(height: 16)),
-                // Couple header with avatars
-                SliverToBoxAdapter(
-                  child: CoupleHeader(
-                    myProfile: authService.profile,
-                    partnerProfile: authService.partnerProfile,
-                    presenceService: presenceService,
-                    daysTogether: days,
-                    isVanillaMode: couple?.isVanillaMode ?? false,
-                  ).animate().fadeIn(delay: 100.ms, duration: 500.ms),
-                ),
-                const SliverToBoxAdapter(child: SizedBox(height: 20)),
-                // Quick actions
-                SliverToBoxAdapter(
-                  child: QuickActions(
-                    authService: authService,
-                    chatService: chatService,
-                  ).animate().fadeIn(delay: 200.ms, duration: 400.ms),
-                ),
-                const SliverToBoxAdapter(child: SizedBox(height: 16)),
-                // Memory Globe Banner
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: _buildMemoryGlobeBanner(context),
-                  ).animate().fadeIn(delay: 220.ms, duration: 400.ms),
-                ),
-                const SliverToBoxAdapter(child: SizedBox(height: 24)),
-                // Channels section header
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
-                    child: Text(
-                      'YOUR SPACES',
-                      style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                            color: AppTheme.onSurfaceVariant.withValues(alpha: 0.5),
-                            letterSpacing: 1.5,
-                            fontWeight: FontWeight.w600,
-                          ),
+      extendBody: true,
+      extendBodyBehindAppBar: true,
+      body: Stack(
+        children: [
+          // Ambient ColorOS style backdrop
+          Positioned.fill(
+            child: Container(
+              color: AppTheme.surface,
+              child: Stack(
+                children: [
+                  Positioned(
+                    top: -100,
+                    right: -100,
+                    child: Container(
+                      width: 400,
+                      height: 400,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: AppTheme.primary.withValues(alpha: 0.15),
+                      ),
+                    ).animate(onPlay: (c) => c.repeat())
+                     .move(duration: 10.seconds, begin: const Offset(0, 0), end: const Offset(-50, 50))
+                     .move(duration: 12.seconds, delay: 10.seconds, begin: const Offset(-50, 50), end: const Offset(0, 0)),
+                  ),
+                  Positioned.fill(
+                    child: BackdropFilter(
+                      filter: ImageFilter.blur(sigmaX: 100, sigmaY: 100),
+                      child: Container(color: Colors.transparent),
                     ),
-                  ).animate().fadeIn(delay: 250.ms, duration: 400.ms),
-                ),
-                const SliverToBoxAdapter(child: SizedBox(height: 8)),
-                // Channel list
-                _buildChannelList(context),
-                // Bottom padding
-                const SliverToBoxAdapter(child: SizedBox(height: 100)),
-              ],
+                  ),
+                ],
+              ),
             ),
           ),
-        ),
+          SafeArea(
+            bottom: false,
+            child: ResponsiveWrapper(
+              maxWidth: 520,
+              child: CustomScrollView(
+                physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()), // ColorOS physics
+                slivers: [
+                  // Header with logo
+                  SliverToBoxAdapter(child: _buildHeader(context)),
+                  // Email verification banner
+                  if (!widget.authService.isEmailVerified)
+                    SliverToBoxAdapter(child: _buildVerificationBanner(context)),
+                  const SliverToBoxAdapter(child: SizedBox(height: 16)),
+                  // Couple header with avatars
+                  SliverToBoxAdapter(
+                    child: CoupleHeader(
+                      myProfile: widget.authService.profile,
+                      partnerProfile: widget.authService.partnerProfile,
+                      presenceService: widget.presenceService,
+                      daysTogether: days,
+                      isVanillaMode: couple?.isVanillaMode ?? false,
+                    ).animate().fadeIn(delay: 100.ms, duration: 500.ms),
+                  ),
+                  const SliverToBoxAdapter(child: SizedBox(height: 20)),
+                  // Quick actions
+                  SliverToBoxAdapter(
+                    child: QuickActions(
+                      authService: widget.authService,
+                      chatService: widget.chatService,
+                    ).animate().fadeIn(delay: 200.ms, duration: 400.ms),
+                  ),
+                  const SliverToBoxAdapter(child: SizedBox(height: 16)),
+                  // Memory Globe Banner
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: _buildMemoryGlobeBanner(context),
+                    ).animate().fadeIn(delay: 220.ms, duration: 400.ms),
+                  ),
+                  const SliverToBoxAdapter(child: SizedBox(height: 24)),
+                  // Channels section header
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      child: Text(
+                        'YOUR SPACES',
+                        style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                              color: AppTheme.onSurfaceVariant.withValues(alpha: 0.5),
+                              letterSpacing: 1.5,
+                              fontWeight: FontWeight.w600,
+                            ),
+                      ),
+                    ).animate().fadeIn(delay: 250.ms, duration: 400.ms),
+                  ),
+                  const SliverToBoxAdapter(child: SizedBox(height: 8)),
+                  // Channel list
+                  _buildChannelList(context),
+                  // Bottom padding
+                  const SliverToBoxAdapter(child: SizedBox(height: 140)),
+                ],
+              ),
+            ),
+          ),
+          
+          // Liquid Glass Pill
+          Positioned(
+            bottom: MediaQuery.of(context).padding.bottom + 16,
+            left: 0,
+            right: 0,
+            child: Center(
+              child: LiquidGlassPill(
+                selectedIndex: _selectedPillIndex,
+                onItemSelected: (index) {
+                  setState(() => _selectedPillIndex = index);
+                  if (index == 2) { // Globe
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => MemoryGlobeScreen(
+                          chatService: widget.chatService,
+                          authService: widget.authService,
+                        ),
+                      ),
+                    );
+                  } else if (index == 3) { // Settings
+                    _showSettings(context);
+                  }
+                },
+                items: const [
+                  LiquidPillItem(icon: Icons.chat_bubble_rounded, label: 'Chat'),
+                  LiquidPillItem(icon: Icons.dashboard_rounded, label: 'Spaces'),
+                  LiquidPillItem(icon: Icons.public_rounded, label: 'Globe'),
+                  LiquidPillItem(icon: Icons.settings_rounded, label: 'Settings'),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
-      floatingActionButton: _buildSettingsFab(context),
     );
   }
 
@@ -160,7 +237,7 @@ class HomeScreen extends StatelessWidget {
   }
 
   Widget _buildVerificationBanner(BuildContext context) {
-    final remaining = authService.profile?.gracePeriodRemaining ?? Duration.zero;
+    final remaining = widget.authService.profile?.gracePeriodRemaining ?? Duration.zero;
     final hours = remaining.inHours;
     final timeLabel = hours > 0 ? '${hours}h left' : 'Expiring soon';
 
@@ -222,7 +299,7 @@ class HomeScreen extends StatelessWidget {
               child: TextButton(
                 onPressed: () async {
                   try {
-                    await authService.sendVerificationEmail();
+                    await widget.authService.sendVerificationEmail();
                     if (context.mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(
@@ -268,8 +345,8 @@ class HomeScreen extends StatelessWidget {
           context,
           MaterialPageRoute(
             builder: (context) => MemoryGlobeScreen(
-              chatService: chatService,
-              authService: authService,
+              chatService: widget.chatService,
+              authService: widget.authService,
             ),
           ),
         );
@@ -331,9 +408,9 @@ class HomeScreen extends StatelessWidget {
 
   Widget _buildChannelList(BuildContext context) {
     return ListenableBuilder(
-      listenable: chatService,
+      listenable: widget.chatService,
       builder: (context, _) {
-        final channels = chatService.channels;
+        final channels = widget.chatService.channels;
         if (channels.isEmpty) {
           return SliverToBoxAdapter(
             child: Padding(
@@ -402,14 +479,14 @@ class HomeScreen extends StatelessWidget {
       case ChannelType.photos:
         return 'Share your moments together 📸';
       case ChannelType.plans:
-        final plans = chatService.plansForChannel(channel.id);
+        final plans = widget.chatService.plansForChannel(channel.id);
         final upcoming = plans.where((p) => !p.isCompleted).length;
         if (upcoming > 0) return '$upcoming plan${upcoming == 1 ? '' : 's'} waiting ✨';
         return 'Plan your next adventure 🗺️';
       case ChannelType.random:
-        return chatService.currentPrompt.text.length > 40
-            ? '${chatService.currentPrompt.text.substring(0, 40)}...'
-            : chatService.currentPrompt.text;
+        return widget.chatService.currentPrompt.text.length > 40
+            ? '${widget.chatService.currentPrompt.text.substring(0, 40)}...'
+            : widget.chatService.currentPrompt.text;
       case ChannelType.custom:
         return channel.description;
     }
@@ -421,43 +498,43 @@ class HomeScreen extends StatelessWidget {
       case ChannelType.general:
         screen = GeneralChatScreen(
           channel: channel,
-          authService: authService,
-          chatService: chatService,
-          presenceService: presenceService,
-          mediaService: mediaService,
+          authService: widget.authService,
+          chatService: widget.chatService,
+          presenceService: widget.presenceService,
+          mediaService: widget.mediaService,
         );
         break;
       case ChannelType.photos:
         screen = PhotosScreen(
           channel: channel,
-          authService: authService,
-          chatService: chatService,
-          presenceService: presenceService,
-          mediaService: mediaService,
+          authService: widget.authService,
+          chatService: widget.chatService,
+          presenceService: widget.presenceService,
+          mediaService: widget.mediaService,
         );
         break;
       case ChannelType.plans:
         screen = PlansScreen(
           channel: channel,
-          authService: authService,
-          chatService: chatService,
-          presenceService: presenceService,
+          authService: widget.authService,
+          chatService: widget.chatService,
+          presenceService: widget.presenceService,
         );
         break;
       case ChannelType.random:
         screen = RandomScreen(
           channel: channel,
-          authService: authService,
-          chatService: chatService,
-          presenceService: presenceService,
+          authService: widget.authService,
+          chatService: widget.chatService,
+          presenceService: widget.presenceService,
         );
         break;
       case ChannelType.custom:
         screen = ChatScreen(
           channel: channel,
-          authService: authService,
-          chatService: chatService,
-          presenceService: presenceService,
+          authService: widget.authService,
+          chatService: widget.chatService,
+          presenceService: widget.presenceService,
         );
         break;
     }
@@ -484,30 +561,6 @@ class HomeScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildSettingsFab(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: AppTheme.surfaceContainerHigh.withValues(alpha: 0.9),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppTheme.outline.withValues(alpha: 0.15)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.2),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: FloatingActionButton.small(
-        onPressed: () => _showCreateChannel(context),
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        child: Icon(Icons.add_rounded,
-            color: AppTheme.onSurfaceVariant, size: 22),
-      ),
-    );
-  }
 
   void _showCreateChannel(BuildContext context) {
     final nameCtrl = TextEditingController();
@@ -625,7 +678,7 @@ class HomeScreen extends StatelessWidget {
                 child: ElevatedButton(
                   onPressed: () {
                     if (nameCtrl.text.trim().isNotEmpty) {
-                      chatService.createChannel(
+                      widget.chatService.createChannel(
                         name: nameCtrl.text.trim(),
                         icon: selectedEmoji,
                       );
@@ -656,7 +709,7 @@ class HomeScreen extends StatelessWidget {
   }
 
   void _showSettings(BuildContext context) {
-    final couple = authService.couple;
+    final couple = widget.authService.couple;
     final days = couple != null
         ? DateTime.now().difference(couple.pairedAt).inDays
         : 0;
@@ -702,7 +755,7 @@ class HomeScreen extends StatelessWidget {
                       backgroundColor:
                           AppTheme.primary.withValues(alpha: 0.15),
                       child: Text(
-                        (authService.profile?.displayName ?? 'U')[0]
+                        (widget.authService.profile?.displayName ?? 'U')[0]
                             .toUpperCase(),
                         style: TextStyle(
                           color: AppTheme.primary,
@@ -717,14 +770,14 @@ class HomeScreen extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            authService.profile?.displayName ?? 'User',
+                            widget.authService.profile?.displayName ?? 'User',
                             style: Theme.of(ctx)
                                 .textTheme
                                 .titleMedium
                                 ?.copyWith(fontWeight: FontWeight.w600),
                           ),
                           Text(
-                            '@${authService.profile?.username ?? ''}',
+                            '@${widget.authService.profile?.username ?? ''}',
                             style: Theme.of(ctx).textTheme.bodySmall?.copyWith(
                                 color: AppTheme.onSurfaceVariant),
                           ),
@@ -765,7 +818,7 @@ class HomeScreen extends StatelessWidget {
                       _statItem(
                         ctx,
                         '💬',
-                        '${chatService.channels.length}',
+                        '${widget.chatService.channels.length}',
                         'Channels',
                       ),
                     ],
@@ -790,9 +843,9 @@ class HomeScreen extends StatelessWidget {
                     SizedBox(
                       height: 48,
                       child: ListenableBuilder(
-                        listenable: authService,
+                        listenable: widget.authService,
                         builder: (context, _) {
-                          final currentHex = authService.couple?.themeColorHex ?? '#FFFF6B6B';
+                          final currentHex = widget.authService.couple?.themeColorHex ?? '#FFFF6B6B';
                           
                           final presetColors = [
                             {'name': 'Passionate Coral', 'hex': '#FFFF6B6B'},
@@ -812,7 +865,7 @@ class HomeScreen extends StatelessWidget {
                               final isSelected = currentHex.toUpperCase() == hex.toUpperCase();
                               
                               return GestureDetector(
-                                onTap: () => authService.updateThemeColor(hex),
+                                onTap: () => widget.authService.updateThemeColor(hex),
                                 child: AnimatedContainer(
                                   duration: const Duration(milliseconds: 200),
                                   width: 48,
@@ -846,9 +899,9 @@ class HomeScreen extends StatelessWidget {
               
               // Emergency / Vanilla Mode Toggle
               ListenableBuilder(
-                listenable: authService,
+                listenable: widget.authService,
                 builder: (context, _) {
-                  final isVanilla = authService.couple?.isVanillaMode ?? false;
+                  final isVanilla = widget.authService.couple?.isVanillaMode ?? false;
                   return SwitchListTile(
                     title: Text(
                       'Emergency / Vanilla Mode',
@@ -875,7 +928,7 @@ class HomeScreen extends StatelessWidget {
                     value: isVanilla,
                     activeColor: AppTheme.error,
                     onChanged: (val) {
-                      authService.toggleVanillaMode(val);
+                      widget.authService.toggleVanillaMode(val);
                     },
                   );
                 },
@@ -885,11 +938,11 @@ class HomeScreen extends StatelessWidget {
               
               // Backup & Restore
               ListenableBuilder(
-                listenable: backupService,
+                listenable: widget.backupService,
                 builder: (context, _) {
-                  final hasAccount = backupService.isSignedIn;
-                  final isBackingUp = backupService.isBackingUp;
-                  final isRestoring = backupService.isRestoring;
+                  final hasAccount = widget.backupService.isSignedIn;
+                  final isBackingUp = widget.backupService.isBackingUp;
+                  final isRestoring = widget.backupService.isRestoring;
                   
                   return Column(
                     children: [
@@ -905,7 +958,7 @@ class HomeScreen extends StatelessWidget {
                             : null,
                         onTap: () async {
                           if (!hasAccount) {
-                            await backupService.signIn();
+                            await widget.backupService.signIn();
                           }
                         },
                       ),
@@ -916,7 +969,7 @@ class HomeScreen extends StatelessWidget {
                             children: [
                               Expanded(
                                 child: ElevatedButton.icon(
-                                  onPressed: isBackingUp || isRestoring ? null : () => backupService.backup(),
+                                  onPressed: isBackingUp || isRestoring ? null : () => widget.backupService.backup(),
                                   icon: const Icon(Icons.upload_rounded, size: 16),
                                   label: const Text('Backup Now'),
                                   style: ElevatedButton.styleFrom(
@@ -929,7 +982,7 @@ class HomeScreen extends StatelessWidget {
                               const SizedBox(width: 8),
                               Expanded(
                                 child: ElevatedButton.icon(
-                                  onPressed: isBackingUp || isRestoring ? null : () => backupService.restore(),
+                                  onPressed: isBackingUp || isRestoring ? null : () => widget.backupService.restore(),
                                   icon: const Icon(Icons.download_rounded, size: 16),
                                   label: const Text('Restore'),
                                   style: ElevatedButton.styleFrom(
@@ -957,7 +1010,7 @@ class HomeScreen extends StatelessWidget {
                 ),
                 onTap: () {
                   Navigator.pop(ctx);
-                  authService.signOut();
+                  widget.authService.signOut();
                 },
                 shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12)),

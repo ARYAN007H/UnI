@@ -231,19 +231,17 @@ class _MessageBubbleState extends State<MessageBubble> with SingleTickerProvider
       onTap: isMedia && hasMediaUrl ? () => _openMediaViewer(context) : null,
       child: Container(
         constraints: isMedia ? const BoxConstraints(maxWidth: 260) : null,
-        decoration: BoxDecoration(
-          color: widget.isMine ? null : AppTheme.receivedBubbleColor,
+        decoration: AppTheme.liquidGlass(
+          opacity: widget.isMine ? 0.9 : 0.4,
+          radius: 24,
+          baseColor: widget.isMine ? AppTheme.sentBubbleColor : AppTheme.receivedBubbleColor,
+        ).copyWith(
           gradient: widget.isMine ? AppTheme.sentBubbleGradient : null,
           borderRadius: BorderRadius.only(
-            topLeft: const Radius.circular(20),
-            topRight: const Radius.circular(20),
-            bottomLeft: Radius.circular(widget.isMine ? 20 : 6),
-            bottomRight: Radius.circular(widget.isMine ? 6 : 20),
-          ),
-          border: Border.all(
-            color: widget.isMine
-                ? AppTheme.primary.withValues(alpha: 0.12)
-                : AppTheme.outline.withValues(alpha: 0.1),
+            topLeft: const Radius.circular(24),
+            topRight: const Radius.circular(24),
+            bottomLeft: Radius.circular(widget.isMine ? 24 : 6),
+            bottomRight: Radius.circular(widget.isMine ? 6 : 24),
           ),
         ),
         clipBehavior: Clip.antiAlias,

@@ -19,18 +19,18 @@ class AppTheme {
   static const Color _accent = Color(0xFFE8B4B8);
   static Color _sentBubble = const Color(0xFF3D2028);
   
-  // Static Core
-  static const Color _surface = Color(0xFF131118);
-  static const Color _surfaceContainer = Color(0xFF1C1A24);
-  static const Color _surfaceContainerHigh = Color(0xFF262433);
-  static const Color _surfaceContainerHighest = Color(0xFF302E3E);
+  // Static Core - Liquid Expressive OLED Base
+  static const Color _surface = Color(0xFF000000);
+  static const Color _surfaceContainer = Color(0xFF0A0A0C);
+  static const Color _surfaceContainerHigh = Color(0xFF141418);
+  static const Color _surfaceContainerHighest = Color(0xFF1C1C22);
   static const Color _onSurface = Color(0xFFF5F0EB);
   static const Color _onSurfaceVariant = Color(0xFF9E97AB);
-  static const Color _outline = Color(0xFF3D3848);
-  static const Color _outlineVariant = Color(0xFF2A2635);
+  static const Color _outline = Color(0xFF333333);
+  static const Color _outlineVariant = Color(0xFF1F1F1F);
   static const Color _error = Color(0xFFFF6B6B);
   static const Color _success = Color(0xFF6BCB77);
-  static const Color _receivedBubble = Color(0xFF1E1C28);
+  static const Color _receivedBubble = Color(0xFF141418);
 
   // ── Per-Channel Color Palettes ────────────────────────────────
   static const Map<ChannelType, ChannelColors> channelPalettes = {
@@ -303,17 +303,54 @@ class AppTheme {
     );
   }
 
+  // ── Animation & Physics ─────────────────────────────────────
+  
+  /// ColorOS Aquamorphic Spring Curve
+  static const Curve aquamorphicCurve = Curves.elasticOut;
+  
+  static Duration get aquamorphicDuration => const Duration(milliseconds: 600);
+
   // ── Helpers ────────────────────────────────────────────────
 
+  /// Liquid Glass (Apple style) with specular highlights
+  static BoxDecoration liquidGlass({
+    double opacity = 0.2,
+    double radius = 24,
+    Color? baseColor,
+  }) {
+    final color = baseColor ?? _surfaceContainerHigh;
+    return BoxDecoration(
+      color: color.withValues(alpha: opacity),
+      borderRadius: BorderRadius.circular(radius),
+      border: Border.all(
+        color: Colors.white.withValues(alpha: 0.15), // Outer specular highlight
+        width: 1,
+      ),
+      boxShadow: [
+        BoxShadow(
+          color: Colors.white.withValues(alpha: 0.05), // Inner specular glow
+          blurRadius: 20,
+          spreadRadius: -5,
+          offset: const Offset(0, 5),
+        ),
+        BoxShadow(
+          color: Colors.black.withValues(alpha: 0.2), // Ambient occlusion shadow
+          blurRadius: 16,
+          offset: const Offset(0, 8),
+        ),
+      ],
+    );
+  }
+
   static BoxDecoration glassCard({
-    double opacity = 0.6,
-    double borderOpacity = 0.2,
-    double radius = 20,
+    double opacity = 0.3,
+    double borderOpacity = 0.15,
+    double radius = 24,
   }) {
     return BoxDecoration(
       color: _surfaceContainer.withValues(alpha: opacity),
       borderRadius: BorderRadius.circular(radius),
-      border: Border.all(color: _outline.withValues(alpha: borderOpacity)),
+      border: Border.all(color: Colors.white.withValues(alpha: borderOpacity)),
     );
   }
 
@@ -331,19 +368,25 @@ class AppTheme {
     );
   }
 
-  /// Creates a glassmorphic card decoration with channel-specific accent
-  static BoxDecoration channelCard(ChannelType type, {double radius = 20}) {
+  /// Creates a liquid glass card decoration with channel-specific accent
+  static BoxDecoration channelCard(ChannelType type, {double radius = 24}) {
     final colors = colorsFor(type);
     return BoxDecoration(
-      color: _surfaceContainer.withValues(alpha: 0.7),
+      color: _surfaceContainer.withValues(alpha: 0.4),
       borderRadius: BorderRadius.circular(radius),
-      border: Border.all(color: colors.accent.withValues(alpha: 0.12)),
+      border: Border.all(color: colors.accentLight.withValues(alpha: 0.25), width: 1.2),
       boxShadow: [
         BoxShadow(
-          color: colors.accent.withValues(alpha: 0.04),
-          blurRadius: 16,
-          spreadRadius: 1,
+          color: colors.accent.withValues(alpha: 0.08),
+          blurRadius: 24,
+          spreadRadius: 2,
         ),
+        BoxShadow(
+          color: Colors.white.withValues(alpha: 0.06), // Inner liquid highlight
+          blurRadius: 10,
+          spreadRadius: -4,
+          offset: const Offset(0, 4),
+        )
       ],
     );
   }

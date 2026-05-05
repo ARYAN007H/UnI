@@ -38,13 +38,7 @@ class ChannelCard extends StatelessWidget {
               filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
               child: Container(
                 padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: AppTheme.surfaceContainer.withValues(alpha: 0.65),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(
-                    color: colors.accent.withValues(alpha: 0.1),
-                  ),
-                ),
+                decoration: AppTheme.channelCard(channel.type, radius: 24),
                 child: Row(
                   children: [
                     // Accent bar

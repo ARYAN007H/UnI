@@ -112,20 +112,27 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      extendBodyBehindAppBar: true,
       body: Container(
         decoration: const BoxDecoration(gradient: AppTheme.surfaceGradient),
-        child: SafeArea(
-          bottom: false,
-          child: ResponsiveWrapper(
-            maxWidth: 520,
-            child: Column(
-              children: [
-                _buildAppBar(),
-                Expanded(child: _buildMessageList()),
-                _buildInputBar(),
-              ],
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: _buildMessageList(),
             ),
-          ),
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: _buildAppBar(),
+            ),
+            Positioned(
+              bottom: 0,
+              left: 0,
+              right: 0,
+              child: _buildInputBar(),
+            ),
+          ],
         ),
       ),
     );
@@ -134,15 +141,13 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   Widget _buildAppBar() {
     return ClipRRect(
       child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
+        filter: ImageFilter.blur(sigmaX: 40, sigmaY: 40), // Stronger Liquid Glass blur
         child: Container(
-          padding: const EdgeInsets.fromLTRB(4, 8, 16, 12),
-          decoration: BoxDecoration(
-            color: AppTheme.surface.withValues(alpha: 0.85),
-            border: Border(
-              bottom: BorderSide(
-                  color: AppTheme.outline.withValues(alpha: 0.1)),
-            ),
+          padding: EdgeInsets.fromLTRB(4, MediaQuery.of(context).padding.top + 8, 16, 12),
+          decoration: AppTheme.liquidGlass(
+            opacity: 0.5,
+            radius: 0,
+            baseColor: AppTheme.surface,
           ),
           child: Row(
             children: [
@@ -253,7 +258,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                   : ListView.builder(
                       controller: _scrollController,
                       reverse: true,
-                      padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+                      physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
+                      padding: EdgeInsets.fromLTRB(12, 120, 12, MediaQuery.of(context).padding.top + 80),
                       itemCount: messages.length,
                       itemBuilder: (context, index) {
                         final msg = messages[index];
@@ -420,16 +426,19 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   }
 
   Widget _buildInputBar() {
-    return Container(
-      padding: EdgeInsets.fromLTRB(
-          12, 8, 12, MediaQuery.of(context).padding.bottom + 8),
-      decoration: BoxDecoration(
-        color: AppTheme.surface.withValues(alpha: 0.95),
-        border: Border(
-          top: BorderSide(
-              color: AppTheme.outline.withValues(alpha: 0.1)),
-        ),
-      ),
+    return Padding(
+      padding: EdgeInsets.fromLTRB(16, 0, 16, MediaQuery.of(context).padding.bottom + 16),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(32),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 40, sigmaY: 40),
+          child: Container(
+            padding: const EdgeInsets.all(8),
+            decoration: AppTheme.liquidGlass(
+              opacity: 0.5,
+              radius: 32,
+              baseColor: AppTheme.surfaceContainer,
+            ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -508,6 +517,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
             ],
           ),
         ],
+      ),
+        ),
       ),
     );
   }
