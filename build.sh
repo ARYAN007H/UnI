@@ -31,5 +31,8 @@ flutter --version
 echo "Running flutter pub get..."
 flutter pub get
 
+echo "Generating sqflite web workers..."
+dart run sqflite_common_ffi_web:setup
+
 echo "Building Flutter Web (JS, release)..."
 flutter build web --release
