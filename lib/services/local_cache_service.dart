@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
+import 'package:sqflite_common_ffi_web/sqflite_ffi_web.dart';
 import '../models/models.dart';
 
 /// Local SQLite cache for WhatsApp-style local-first architecture.
@@ -15,6 +16,19 @@ class LocalCacheService extends ChangeNotifier {
   /// Initialize the database.
   Future<void> initialize() async {
     if (_db != null) return;
+    
+    if (kIsWeb) {
+      databaseFactory = databaseFactoryFfiWeb;
+      _db = await openDatabase(
+        _dbName,
+        version: _dbVersion,
+        onCreate: _onCreate,
+        onUpgrade: _onUpgrade,
+      );
+      debugPrint('[LocalCache] Web Database initialized');
+      return;
+    }
+
     final dir = await getApplicationDocumentsDirectory();
     final path = p.join(dir.path, _dbName);
 
@@ -281,6 +295,7 @@ class LocalCacheService extends ChangeNotifier {
 
   /// Record a downloaded media file's local path.
   Future<void> cacheMediaPath(String mediaUrl, String localPath, {int? sizeBytes}) async {
+    if (kIsWeb) return;
     await db.insert(
       'media_cache',
       {
@@ -295,6 +310,7 @@ class LocalCacheService extends ChangeNotifier {
 
   /// Get local path for a cached media URL.
   Future<String?> getMediaLocalPath(String mediaUrl) async {
+    if (kIsWeb) return null;
     final rows = await db.query(
       'media_cache',
       columns: ['local_path'],
@@ -307,6 +323,7 @@ class LocalCacheService extends ChangeNotifier {
 
   /// Get total cache size in bytes.
   Future<int> getCacheSize() async {
+    if (kIsWeb) return 0;
     final result = await db.rawQuery(
       'SELECT COALESCE(SUM(size_bytes), 0) as total FROM media_cache',
     );
@@ -343,6 +360,7 @@ class LocalCacheService extends ChangeNotifier {
 
   /// Get the database file path (for backup).
   Future<String> getDatabasePath() async {
+    if (kIsWeb) return '';
     final dir = await getApplicationDocumentsDirectory();
     return p.join(dir.path, _dbName);
   }

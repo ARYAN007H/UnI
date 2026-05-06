@@ -12,7 +12,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 /// Uncomment the Firebase imports and methods once Firebase is configured.
 class NotificationService extends ChangeNotifier {
   final SupabaseClient _client = Supabase.instance.client;
-  bool _permissionGranted = false;
+  final bool _permissionGranted = false;
   bool get permissionGranted => _permissionGranted;
 
   String? _fcmToken;

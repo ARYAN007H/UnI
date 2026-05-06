@@ -821,7 +821,7 @@ class _AnimatedTextFieldState extends State<_AnimatedTextField> {
     return AnimatedContainer(
       duration: const Duration(milliseconds: 250),
       curve: Curves.easeOutCubic,
-      transform: Matrix4.identity()..scale(_isFocused ? 1.02 : 1.0),
+      transform: Matrix4.diagonal3Values(_isFocused ? 1.02 : 1.0, _isFocused ? 1.02 : 1.0, 1.0),
       child: Container(
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(18),

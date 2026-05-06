@@ -10,7 +10,7 @@ import '../../services/auth_service.dart';
 import '../../services/chat_service.dart';
 import '../../services/presence_service.dart';
 import '../../widgets/message_bubble.dart';
-import '../../widgets/responsive_wrapper.dart';
+
 import '../../widgets/typing_indicator.dart';
 
 class ChatScreen extends StatefulWidget {
@@ -518,6 +518,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
           ),
         ],
       ),
+          ),
         ),
       ),
     );

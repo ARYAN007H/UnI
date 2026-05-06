@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:flutter/foundation.dart';
 import '../../config/theme.dart';
 import '../../services/backup_service.dart';
 import '../../services/permission_service.dart';
@@ -27,7 +28,7 @@ class _PermissionScreenState extends State<PermissionScreen> {
   int _currentStep = 0;
   bool _backupToggle = false;
 
-  final _steps = const [
+  late final _steps = [
     _PermStep(
       icon: Icons.notifications_rounded,
       emoji: '🔔',
@@ -59,8 +60,8 @@ class _PermissionScreenState extends State<PermissionScreen> {
     _PermStep(
       icon: Icons.folder_rounded,
       emoji: '💾',
-      title: 'Save & Backup',
-      subtitle: 'Store media and backup your chat history',
+      title: kIsWeb ? 'Offline Storage' : 'Save & Backup',
+      subtitle: kIsWeb ? 'Keep your chat history safely stored in this browser' : 'Store media and backup your chat history',
       permType: 'storage',
     ),
   ];

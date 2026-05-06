@@ -22,19 +22,19 @@ import '../../widgets/liquid_glass_pill.dart';
 import 'dart:ui';
 
 class HomeScreen extends StatefulWidget {
-  final AuthService widget.authService;
-  final ChatService widget.chatService;
-  final PresenceService widget.presenceService;
-  final MediaService widget.mediaService;
-  final BackupService widget.backupService;
+  final AuthService authService;
+  final ChatService chatService;
+  final PresenceService presenceService;
+  final MediaService mediaService;
+  final BackupService backupService;
 
   const HomeScreen({
     super.key,
-    required this.widget.authService,
-    required this.widget.chatService,
-    required this.widget.presenceService,
-    required this.widget.mediaService,
-    required this.widget.backupService,
+    required this.authService,
+    required this.chatService,
+    required this.presenceService,
+    required this.mediaService,
+    required this.backupService,
   });
 
   @override
@@ -130,13 +130,24 @@ class _HomeScreenState extends State<HomeScreen> {
                   SliverToBoxAdapter(
                     child: Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 20),
-                      child: Text(
-                        'YOUR SPACES',
-                        style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                              color: AppTheme.onSurfaceVariant.withValues(alpha: 0.5),
-                              letterSpacing: 1.5,
-                              fontWeight: FontWeight.w600,
-                            ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            'YOUR SPACES',
+                            style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                                  color: AppTheme.onSurfaceVariant.withValues(alpha: 0.5),
+                                  letterSpacing: 1.5,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                          ),
+                          IconButton(
+                            icon: Icon(Icons.add_rounded, color: AppTheme.onSurfaceVariant),
+                            onPressed: () => _showCreateChannel(context),
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(),
+                          ),
+                        ],
                       ),
                     ).animate().fadeIn(delay: 250.ms, duration: 400.ms),
                   ),
@@ -562,6 +573,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
 
+
   void _showCreateChannel(BuildContext context) {
     final nameCtrl = TextEditingController();
     final emojiOptions = ['💬', '📸', '📅', '✨', '❤️', '🎵', '🎮', '📝', '🌟', '🎁'];
@@ -926,7 +938,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       child: Icon(Icons.security_rounded, color: AppTheme.error, size: 20),
                     ),
                     value: isVanilla,
-                    activeColor: AppTheme.error,
+                    activeThumbColor: AppTheme.error,
                     onChanged: (val) {
                       widget.authService.toggleVanillaMode(val);
                     },

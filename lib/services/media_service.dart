@@ -203,6 +203,7 @@ class MediaService extends ChangeNotifier {
   /// Download a media file to local device storage.
   /// Returns the local path if successful, null otherwise.
   Future<String?> downloadMedia(String mediaUrl) async {
+    if (kIsWeb) return null;
     try {
       if (_cache != null) {
         final cachedPath = await _cache.getMediaLocalPath(mediaUrl);
