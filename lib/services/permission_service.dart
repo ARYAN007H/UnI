@@ -1,10 +1,8 @@
 import 'package:flutter/foundation.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'dart:js_interop';
 
-@JS('window.navigator.storage.persist')
-external JSPromise<JSBoolean>? _persistStorage();
+import 'web_storage_stub.dart' if (dart.library.js_interop) 'web_storage.dart' as web_storage;
 
 /// Manages runtime permissions and tracks first-launch setup state.
 class PermissionService extends ChangeNotifier {
@@ -76,20 +74,9 @@ class PermissionService extends ChangeNotifier {
     return _notificationGranted;
   }
 
-  Future<bool> requestWebStorage() async {
-    try {
-      if (_persistStorage() == null) return false;
-      final result = await _persistStorage()!.toDart;
-      return result.toDart;
-    } catch (e) {
-      debugPrint('[Permission] Web storage persist error: $e');
-      return false;
-    }
-  }
-
   Future<bool> requestStorage() async {
     if (kIsWeb) {
-      _storageGranted = await requestWebStorage();
+      _storageGranted = await web_storage.requestWebStorage();
     } else {
       final s = await Permission.storage.request();
       _storageGranted = s.isGranted;
