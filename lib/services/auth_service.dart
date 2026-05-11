@@ -405,4 +405,21 @@ class AuthService extends ChangeNotifier {
       debugPrint('Error updating theme color: $e');
     }
   }
+
+  /// Update display name for the current user's profile
+  Future<void> updateDisplayName(String newName) async {
+    if (currentUser == null || _profile == null) return;
+
+    try {
+      await _client.from('profiles').update({
+        'display_name': newName,
+      }).eq('id', currentUser!.id);
+
+      _profile = _profile!.copyWith(displayName: newName);
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Error updating display name: $e');
+      rethrow;
+    }
+  }
 }

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:math';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -147,6 +148,23 @@ class _VoiceRecorderState extends State<VoiceRecorder>
 
   @override
   Widget build(BuildContext context) {
+    // Voice recording not available on web
+    if (kIsWeb) {
+      return Tooltip(
+        message: 'Voice messages available on mobile',
+        child: Container(
+          width: 48,
+          height: 48,
+          decoration: BoxDecoration(
+            color: _accent.withValues(alpha: 0.05),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: _accent.withValues(alpha: 0.1)),
+          ),
+          child: Icon(Icons.mic_off_rounded, color: _accent.withValues(alpha: 0.3), size: 22),
+        ),
+      );
+    }
+
     if (_isRecording) {
       return _buildRecordingUI();
     }

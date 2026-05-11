@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 import 'package:flutter/foundation.dart';
@@ -43,6 +44,11 @@ class ChatService extends ChangeNotifier {
   final Random _random = Random();
   int _currentPromptIndex = 0;
 
+  // ── Offline sync ────────────────────────────────────────────
+  Timer? _syncTimer;
+  bool _channelsLoadError = false;
+  bool get channelsLoadError => _channelsLoadError;
+
   /// Initialize with couple ID and load channels.
   /// Accepts an optional LocalCacheService for offline-first support.
   Future<void> initialize(String coupleId, {LocalCacheService? cache, MediaService? mediaService}) async {
@@ -53,6 +59,11 @@ class ChatService extends ChangeNotifier {
     await loadChannels();
     // Flush any offline queue
     _syncOfflineMessages();
+    // Start periodic sync timer
+    _syncTimer?.cancel();
+    _syncTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      _syncOfflineMessages();
+    });
   }
 
   /// Sync any messages that were saved locally but failed to send to Supabase.
@@ -99,9 +110,15 @@ class ChatService extends ChangeNotifier {
 
       _channels = data.map((json) => Channel.fromJson(json)).toList();
       _cache?.saveChannels(_channels);
+      _channelsLoadError = false;
       notifyListeners();
     } catch (e) {
       debugPrint('Error loading channels: $e');
+      // If no cached channels either, flag the error for UI
+      if (_channels.isEmpty) {
+        _channelsLoadError = true;
+        notifyListeners();
+      }
     }
   }
 
@@ -676,6 +693,7 @@ class ChatService extends ChangeNotifier {
 
   @override
   void dispose() {
+    _syncTimer?.cancel();
     _messagesSubscription?.unsubscribe();
     _typingChannel?.unsubscribe();
     super.dispose();
