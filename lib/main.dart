@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -21,33 +22,60 @@ import 'screens/setup/permission_screen.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  await dotenv.load(fileName: ".env");
+  // Global error handler — ensures uncaught errors don't blank the screen
+  FlutterError.onError = (details) {
+    FlutterError.presentError(details);
+    debugPrint('[FATAL] FlutterError: ${details.exception}');
+  };
 
-  SystemChrome.setSystemUIOverlayStyle(
-    const SystemUiOverlayStyle(
-      statusBarColor: Colors.transparent,
-      statusBarIconBrightness: Brightness.light,
-      systemNavigationBarColor: Color(0xFF131118),
-      systemNavigationBarIconBrightness: Brightness.light,
-    ),
-  );
+  try {
+    await dotenv.load(fileName: ".env");
+  } catch (e) {
+    debugPrint('[INIT] .env load failed (may be normal on web): $e');
+  }
 
-  await Supabase.initialize(
-    url: SupabaseConfig.url,
-    anonKey: SupabaseConfig.anonKey,
-  );
+  // SystemChrome is mobile-only
+  if (!kIsWeb) {
+    SystemChrome.setSystemUIOverlayStyle(
+      const SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: Brightness.light,
+        systemNavigationBarColor: Color(0xFF131118),
+        systemNavigationBarIconBrightness: Brightness.light,
+      ),
+    );
+  }
+
+  try {
+    await Supabase.initialize(
+      url: SupabaseConfig.url,
+      anonKey: SupabaseConfig.anonKey,
+    );
+  } catch (e) {
+    debugPrint('[INIT] Supabase init failed: $e');
+    runApp(const _ErrorApp(message: 'Failed to connect. Check your internet and try again.'));
+    return;
+  }
 
   // Initialize local cache early
-  final localCache = LocalCacheService();
-  await localCache.initialize();
+  LocalCacheService? localCache;
+  try {
+    localCache = LocalCacheService();
+    await localCache.initialize();
+  } catch (e) {
+    debugPrint('[INIT] LocalCache init failed: $e');
+    // Continue without cache — app still works via network
+    localCache = null;
+  }
 
   runApp(UAndI(localCacheService: localCache));
 }
 
-class UAndI extends StatefulWidget {
-  final LocalCacheService localCacheService;
 
-  const UAndI({super.key, required this.localCacheService});
+class UAndI extends StatefulWidget {
+  final LocalCacheService? localCacheService;
+
+  const UAndI({super.key, this.localCacheService});
 
   @override
   State<UAndI> createState() => _UAndIState();
@@ -113,7 +141,7 @@ class _UAndIState extends State<UAndI> {
     _presenceService.dispose();
     _mediaService.dispose();
     _notificationService.dispose();
-    widget.localCacheService.close();
+    widget.localCacheService?.close();
     super.dispose();
   }
 
@@ -241,6 +269,40 @@ class _SplashScreen extends StatelessWidget {
                 ),
               ),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Shown when Supabase or critical init fails
+class _ErrorApp extends StatelessWidget {
+  final String message;
+  const _ErrorApp({required this.message});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      theme: AppTheme.darkTheme,
+      home: Scaffold(
+        body: Container(
+          decoration: const BoxDecoration(gradient: AppTheme.surfaceGradient),
+          child: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(32),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.cloud_off_rounded, size: 64, color: AppTheme.error.withValues(alpha: 0.7)),
+                  const SizedBox(height: 24),
+                  Text('Connection Error', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: AppTheme.onSurface)),
+                  const SizedBox(height: 12),
+                  Text(message, textAlign: TextAlign.center, style: TextStyle(fontSize: 14, color: AppTheme.onSurfaceVariant)),
+                ],
+              ),
+            ),
           ),
         ),
       ),

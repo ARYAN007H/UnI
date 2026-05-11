@@ -349,6 +349,63 @@ class ChatService extends ChangeNotifier {
             }
           },
         )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.update,
+          schema: 'public',
+          table: 'messages',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'channel_id',
+            value: channelId,
+          ),
+          callback: (payload) {
+            final updated = Message.fromJson(payload.newRecord);
+            final messages = _messagesByChannel[channelId];
+            if (messages == null) return;
+
+            final idx = messages.indexWhere((m) => m.id == updated.id);
+            if (idx != -1) {
+              messages[idx] = updated;
+              _cache?.saveMessage(updated);
+              notifyListeners();
+            }
+          },
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.delete,
+          schema: 'public',
+          table: 'messages',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'channel_id',
+            value: channelId,
+          ),
+          callback: (payload) {
+            final deletedId = payload.oldRecord['id'] as String?;
+            if (deletedId == null) return;
+
+            final messages = _messagesByChannel[channelId];
+            if (messages == null) return;
+
+            final idx = messages.indexWhere((m) => m.id == deletedId);
+            if (idx != -1) {
+              // Mark as deleted locally rather than removing
+              messages[idx] = Message(
+                id: messages[idx].id,
+                channelId: messages[idx].channelId,
+                senderId: messages[idx].senderId,
+                content: null,
+                type: messages[idx].type,
+                isDeleted: true,
+                readBy: messages[idx].readBy,
+                createdAt: messages[idx].createdAt,
+                updatedAt: DateTime.now(),
+              );
+              _cache?.deleteMessage(deletedId);
+              notifyListeners();
+            }
+          },
+        )
         .subscribe();
   }
 
@@ -392,7 +449,8 @@ class ChatService extends ChangeNotifier {
 
   /// Send a typing indicator.
   void sendTypingEvent(String coupleId, String userId) {
-    _client.channel('typing:$coupleId').sendBroadcastMessage(
+    if (_typingChannel == null) return;
+    _typingChannel!.sendBroadcastMessage(
       event: 'typing',
       payload: {'user_id': userId},
     );

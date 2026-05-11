@@ -1,4 +1,4 @@
-import 'dart:io';
+import 'dart:io' if (dart.library.js_interop) 'backup_service_web_stub.dart';
 import 'package:flutter/foundation.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:http/http.dart' as http;
@@ -12,7 +12,7 @@ class BackupService extends ChangeNotifier {
   static const _driveFileIdKey = 'drive_backup_file_id';
   static const _backupFileName = 'uni_backup.db';
 
-  final LocalCacheService _cacheService;
+  final LocalCacheService? _cacheService;
 
   final GoogleSignIn _googleSignIn = GoogleSignIn(
     scopes: ['https://www.googleapis.com/auth/drive.appdata'],
@@ -84,6 +84,11 @@ class BackupService extends ChangeNotifier {
 
   /// Backup the SQLite database to Google Drive's appData folder.
   Future<bool> backup() async {
+    if (kIsWeb) {
+      _error = 'Backup is only available on mobile';
+      notifyListeners();
+      return false;
+    }
     if (_account == null) return false;
 
     try {
@@ -95,7 +100,7 @@ class BackupService extends ChangeNotifier {
       if (headers == null) throw Exception('Not authenticated');
 
       // Get the DB file
-      final dbPath = await _cacheService.getDatabasePath();
+      final dbPath = await _cacheService!.getDatabasePath();
       final dbFile = File(dbPath);
       if (!await dbFile.exists()) throw Exception('Database not found');
 
@@ -173,6 +178,11 @@ class BackupService extends ChangeNotifier {
 
   /// Restore the SQLite database from Google Drive.
   Future<bool> restore() async {
+    if (kIsWeb) {
+      _error = 'Restore is only available on mobile';
+      notifyListeners();
+      return false;
+    }
     if (_account == null) return false;
 
     try {
@@ -213,14 +223,14 @@ class BackupService extends ChangeNotifier {
       }
 
       // Close current DB and replace
-      await _cacheService.close();
+      await _cacheService!.close();
 
-      final dbPath = await _cacheService.getDatabasePath();
+      final dbPath = await _cacheService!.getDatabasePath();
       final dbFile = File(dbPath);
       await dbFile.writeAsBytes(dlResp.bodyBytes);
 
       // Reinitialize
-      await _cacheService.initialize();
+      await _cacheService!.initialize();
 
       // Save the file ID for future updates
       final prefs = await SharedPreferences.getInstance();

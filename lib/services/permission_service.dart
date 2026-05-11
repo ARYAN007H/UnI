@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'web_storage_stub.dart' if (dart.library.js_interop) 'web_storage.dart' as web_storage;
 
 /// Manages runtime permissions and tracks first-launch setup state.
+/// On web, permissions are auto-granted (browser handles its own via HTML5 APIs).
 class PermissionService extends ChangeNotifier {
   static const _setupCompleteKey = 'permission_setup_complete';
   static const _backupEnabledKey = 'backup_enabled';
@@ -32,11 +33,28 @@ class PermissionService extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     _setupComplete = prefs.getBool(_setupCompleteKey) ?? false;
     _backupEnabled = prefs.getBool(_backupEnabledKey) ?? false;
+
+    // On web, auto-complete permission setup — browser handles permissions natively
+    if (kIsWeb) {
+      _cameraGranted = true;
+      _photosGranted = true;
+      _microphoneGranted = true;
+      _notificationGranted = true;
+      _storageGranted = true;
+      if (!_setupComplete) {
+        _setupComplete = true;
+        await prefs.setBool(_setupCompleteKey, true);
+      }
+      notifyListeners();
+      return;
+    }
+
     await refreshPermissions();
     notifyListeners();
   }
 
   Future<void> refreshPermissions() async {
+    if (kIsWeb) return;
     _cameraGranted = await Permission.camera.isGranted;
     _photosGranted = await Permission.photos.isGranted || await Permission.storage.isGranted;
     _microphoneGranted = await Permission.microphone.isGranted;
@@ -46,6 +64,7 @@ class PermissionService extends ChangeNotifier {
   }
 
   Future<bool> requestCamera() async {
+    if (kIsWeb) { _cameraGranted = true; notifyListeners(); return true; }
     final s = await Permission.camera.request();
     _cameraGranted = s.isGranted;
     notifyListeners();
@@ -53,6 +72,7 @@ class PermissionService extends ChangeNotifier {
   }
 
   Future<bool> requestPhotos() async {
+    if (kIsWeb) { _photosGranted = true; notifyListeners(); return true; }
     var s = await Permission.photos.request();
     if (!s.isGranted) s = await Permission.storage.request();
     _photosGranted = s.isGranted;
@@ -61,6 +81,7 @@ class PermissionService extends ChangeNotifier {
   }
 
   Future<bool> requestMicrophone() async {
+    if (kIsWeb) { _microphoneGranted = true; notifyListeners(); return true; }
     final s = await Permission.microphone.request();
     _microphoneGranted = s.isGranted;
     notifyListeners();
@@ -68,6 +89,7 @@ class PermissionService extends ChangeNotifier {
   }
 
   Future<bool> requestNotifications() async {
+    if (kIsWeb) { _notificationGranted = true; notifyListeners(); return true; }
     final s = await Permission.notification.request();
     _notificationGranted = s.isGranted;
     notifyListeners();
@@ -86,6 +108,15 @@ class PermissionService extends ChangeNotifier {
   }
 
   Future<Map<String, bool>> requestAll() async {
+    if (kIsWeb) {
+      _cameraGranted = true;
+      _photosGranted = true;
+      _microphoneGranted = true;
+      _notificationGranted = true;
+      _storageGranted = await web_storage.requestWebStorage();
+      notifyListeners();
+      return { 'notifications': true, 'camera': true, 'photos': true, 'microphone': true, 'storage': _storageGranted };
+    }
     return {
       'notifications': await requestNotifications(),
       'camera': await requestCamera(),
@@ -109,5 +140,8 @@ class PermissionService extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> openSettings() async => await openAppSettings();
+  Future<void> openSettings() async {
+    if (kIsWeb) return;
+    await openAppSettings();
+  }
 }
