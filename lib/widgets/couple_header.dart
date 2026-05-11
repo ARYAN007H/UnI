@@ -273,7 +273,7 @@ class CoupleHeader extends StatelessWidget {
                   fontWeight: FontWeight.w600,
                   fontSize: 12,
                 ),
-          ).animate(onPlay: (c) => c.repeat(delay: 2.seconds)).shimmer(duration: 1500.ms, color: Colors.white54),
+          ).animate(onPlay: (c) => c.repeat()).shimmer(duration: 1500.ms, color: Colors.white54, delay: 2.seconds),
         ],
       ),
     );

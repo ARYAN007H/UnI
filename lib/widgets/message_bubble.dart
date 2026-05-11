@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/physics.dart';
@@ -358,9 +359,11 @@ class _MessageBubbleState extends State<MessageBubble> with SingleTickerProvider
             ),
           ],
         ),
-      ),
-    );
-  }
+      ],
+    ),
+  ),
+);
+}
 
   // ── Media Content (Image/Video) ─────────────────────────
 
@@ -654,6 +657,7 @@ class _MessageBubbleState extends State<MessageBubble> with SingleTickerProvider
             ],
           ),
         ),
+      ),
       ),
     );
   }
