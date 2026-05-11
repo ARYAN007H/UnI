@@ -25,6 +25,7 @@ class _LoginScreenState extends State<LoginScreen>
   final _usernameController = TextEditingController();
 
   bool _isLogin = true;
+  int _currentStep = 0;
   bool _loading = false;
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
@@ -61,6 +62,7 @@ class _LoginScreenState extends State<LoginScreen>
   void _toggleMode() {
     setState(() {
       _isLogin = !_isLogin;
+      _currentStep = 0;
       _error = null;
       _staggerKey = !_staggerKey; // re-trigger staggered animations
       // Reset some fields if we switch
@@ -69,6 +71,32 @@ class _LoginScreenState extends State<LoginScreen>
         _displayNameController.clear();
         _usernameController.clear();
       }
+    });
+  }
+
+  void _nextStep() {
+    if (!_formKey.currentState!.validate()) return;
+
+    if (!_isLogin && _currentStep == 1) {
+      if (_passwordController.text != _confirmPasswordController.text) {
+        setState(() => _error = "Passwords do not match");
+        return;
+      }
+    }
+
+    setState(() {
+      _error = null;
+      _currentStep++;
+      _staggerKey = !_staggerKey;
+    });
+  }
+
+  void _previousStep() {
+    FocusScope.of(context).unfocus();
+    setState(() {
+      _error = null;
+      if (_currentStep > 0) _currentStep--;
+      _staggerKey = !_staggerKey;
     });
   }
 
@@ -294,9 +322,6 @@ class _LoginScreenState extends State<LoginScreen>
 
   @override
   Widget build(BuildContext context) {
-    // We use MediaQuery to padding at the bottom when keyboard opens
-    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
-
     return Scaffold(
       body: Container(
         decoration: const BoxDecoration(gradient: AppTheme.surfaceGradient),
@@ -378,10 +403,10 @@ class _LoginScreenState extends State<LoginScreen>
                     hasScrollBody: false,
                     child: ResponsiveWrapper(
                       maxWidth: 480,
-                      padding: EdgeInsets.only(
+                      padding: const EdgeInsets.only(
                         left: 28,
                         right: 28,
-                        bottom: bottomInset > 0 ? bottomInset + 20 : 40,
+                        bottom: 40,
                       ),
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
@@ -500,25 +525,42 @@ class _LoginScreenState extends State<LoginScreen>
                       ),
                     ),
                     child: Align(
-                      key: ValueKey(_isLogin),
+                      key: ValueKey('$_isLogin-$_currentStep'),
                       alignment: Alignment.centerLeft,
-                      child: Column(
+                      child: Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            _isLogin ? 'Welcome back' : 'Create your account',
-                            style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                                  fontWeight: FontWeight.w700,
+                          if (_currentStep > 0) ...[
+                            IconButton(
+                              icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
+                              color: AppTheme.onSurfaceVariant,
+                              onPressed: _previousStep,
+                              padding: const EdgeInsets.only(top: 4, right: 12),
+                              constraints: const BoxConstraints(),
+                              alignment: Alignment.topCenter,
+                            ),
+                          ],
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  _isLogin ? 'Welcome back' : 'Create your account',
+                                  style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                                        fontWeight: FontWeight.w700,
+                                      ),
                                 ),
-                          ),
-                          const SizedBox(height: 6),
-                          Text(
-                            _isLogin
-                                ? 'Sign in to continue your journey'
-                                : 'Start your private love story',
-                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                  color: AppTheme.onSurfaceVariant,
+                                const SizedBox(height: 6),
+                                Text(
+                                  _isLogin
+                                      ? 'Sign in to continue your journey'
+                                      : 'Start your private love story',
+                                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                        color: AppTheme.onSurfaceVariant,
+                                      ),
                                 ),
+                              ],
+                            ),
                           ),
                         ],
                       ),
@@ -580,9 +622,13 @@ class _LoginScreenState extends State<LoginScreen>
                   const SizedBox(height: 32),
 
                   _buildGradientButton(
-                    label: _isLogin ? 'Sign In' : 'Create Account',
+                    label: _isLogin 
+                        ? (_currentStep == 0 ? 'Continue' : 'Sign In')
+                        : (_currentStep < 2 ? 'Continue' : 'Create Account'),
                     loading: _loading,
-                    onPressed: _loading ? null : _submit,
+                    onPressed: _loading ? null : (_isLogin 
+                        ? (_currentStep == 0 ? _nextStep : _submit)
+                        : (_currentStep < 2 ? _nextStep : _submit)),
                   ),
                 ],
               ),
@@ -595,123 +641,129 @@ class _LoginScreenState extends State<LoginScreen>
 
   Widget _buildLoginFields() {
     return Column(
-      key: ValueKey('login_fields_$_staggerKey'),
+      key: ValueKey('login_fields_${_currentStep}_$_staggerKey'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _AnimatedTextField(
-          controller: _emailController,
-          hint: 'Email address',
-          icon: Icons.email_rounded,
-          keyboardType: TextInputType.emailAddress,
-          validator: (v) {
-            if (v == null || v.trim().isEmpty) return 'Enter your email';
-            if (!v.contains('@')) return 'Enter a valid email';
-            return null;
-          },
-        ).animate().fadeIn(delay: 50.ms, duration: 350.ms).slideY(begin: 0.15, end: 0, curve: Curves.easeOutCubic),
-        const SizedBox(height: 16),
-        _AnimatedTextField(
-          controller: _passwordController,
-          hint: 'Password',
-          icon: Icons.lock_rounded,
-          obscure: _obscurePassword,
-          suffixIcon: IconButton(
-            icon: Icon(
-              _obscurePassword
-                  ? Icons.visibility_off_rounded
-                  : Icons.visibility_rounded,
-              color: AppTheme.onSurfaceVariant,
-              size: 20,
+        if (_currentStep == 0)
+          _AnimatedTextField(
+            controller: _emailController,
+            hint: 'Email address',
+            icon: Icons.email_rounded,
+            keyboardType: TextInputType.emailAddress,
+            validator: (v) {
+              if (v == null || v.trim().isEmpty) return 'Enter your email';
+              if (!v.contains('@')) return 'Enter a valid email';
+              return null;
+            },
+          ).animate().fadeIn(delay: 50.ms, duration: 350.ms).slideY(begin: 0.15, end: 0, curve: Curves.easeOutCubic),
+        if (_currentStep == 1)
+          _AnimatedTextField(
+            controller: _passwordController,
+            hint: 'Password',
+            icon: Icons.lock_rounded,
+            obscure: _obscurePassword,
+            suffixIcon: IconButton(
+              icon: Icon(
+                _obscurePassword
+                    ? Icons.visibility_off_rounded
+                    : Icons.visibility_rounded,
+                color: AppTheme.onSurfaceVariant,
+                size: 20,
+              ),
+              onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
             ),
-            onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
-          ),
-          validator: (v) {
-            if (v == null || v.isEmpty) return 'Enter your password';
-            return null;
-          },
-        ).animate().fadeIn(delay: 120.ms, duration: 350.ms).slideY(begin: 0.15, end: 0, curve: Curves.easeOutCubic),
+            validator: (v) {
+              if (v == null || v.isEmpty) return 'Enter your password';
+              return null;
+            },
+          ).animate().fadeIn(delay: 50.ms, duration: 350.ms).slideY(begin: 0.15, end: 0, curve: Curves.easeOutCubic),
       ],
     );
   }
 
   Widget _buildSignUpFields() {
     return Column(
-      key: ValueKey('signup_fields_$_staggerKey'),
+      key: ValueKey('signup_fields_${_currentStep}_$_staggerKey'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _AnimatedTextField(
-          controller: _displayNameController,
-          hint: 'What should we call you?',
-          icon: Icons.person_rounded,
-          capitalization: TextCapitalization.words,
-          validator: (v) =>
-              v == null || v.trim().isEmpty ? 'Enter your name' : null,
-        ).animate().fadeIn(delay: 50.ms, duration: 350.ms).slideY(begin: 0.15, end: 0, curve: Curves.easeOutCubic),
-        const SizedBox(height: 16),
-        _AnimatedTextField(
-          controller: _usernameController,
-          hint: 'Pick a unique username',
-          icon: Icons.alternate_email_rounded,
-          validator: (v) =>
-              v == null || v.trim().isEmpty ? 'Pick a username' : null,
-        ).animate().fadeIn(delay: 120.ms, duration: 350.ms).slideY(begin: 0.15, end: 0, curve: Curves.easeOutCubic),
-        const SizedBox(height: 16),
-        _AnimatedTextField(
-          controller: _emailController,
-          hint: 'Email address',
-          icon: Icons.email_rounded,
-          keyboardType: TextInputType.emailAddress,
-          validator: (v) {
-            if (v == null || v.trim().isEmpty) return 'Enter your email';
-            if (!v.contains('@')) return 'Enter a valid email';
-            return null;
-          },
-        ).animate().fadeIn(delay: 190.ms, duration: 350.ms).slideY(begin: 0.15, end: 0, curve: Curves.easeOutCubic),
-        const SizedBox(height: 16),
-        _AnimatedTextField(
-          controller: _passwordController,
-          hint: 'Password',
-          icon: Icons.lock_rounded,
-          obscure: _obscurePassword,
-          suffixIcon: IconButton(
-            icon: Icon(
-              _obscurePassword
-                  ? Icons.visibility_off_rounded
-                  : Icons.visibility_rounded,
-              color: AppTheme.onSurfaceVariant,
-              size: 20,
+        if (_currentStep == 0)
+          _AnimatedTextField(
+            controller: _emailController,
+            hint: 'Email address',
+            icon: Icons.email_rounded,
+            keyboardType: TextInputType.emailAddress,
+            validator: (v) {
+              if (v == null || v.trim().isEmpty) return 'Enter your email';
+              if (!v.contains('@')) return 'Enter a valid email';
+              return null;
+            },
+          ).animate().fadeIn(delay: 50.ms, duration: 350.ms).slideY(begin: 0.15, end: 0, curve: Curves.easeOutCubic),
+        
+        if (_currentStep == 1) ...[
+          _AnimatedTextField(
+            controller: _passwordController,
+            hint: 'Password',
+            icon: Icons.lock_rounded,
+            obscure: _obscurePassword,
+            suffixIcon: IconButton(
+              icon: Icon(
+                _obscurePassword
+                    ? Icons.visibility_off_rounded
+                    : Icons.visibility_rounded,
+                color: AppTheme.onSurfaceVariant,
+                size: 20,
+              ),
+              onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
             ),
-            onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
-          ),
-          validator: (v) {
-            if (v == null || v.isEmpty) return 'Enter a password';
-            if (v.length < 6) return 'Min 6 characters';
-            return null;
-          },
-        ).animate().fadeIn(delay: 260.ms, duration: 350.ms).slideY(begin: 0.15, end: 0, curve: Curves.easeOutCubic),
-        const SizedBox(height: 16),
-        _AnimatedTextField(
-          controller: _confirmPasswordController,
-          hint: 'Confirm Password',
-          icon: Icons.lock_outline_rounded,
-          obscure: _obscureConfirmPassword,
-          suffixIcon: IconButton(
-            icon: Icon(
-              _obscureConfirmPassword
-                  ? Icons.visibility_off_rounded
-                  : Icons.visibility_rounded,
-              color: AppTheme.onSurfaceVariant,
-              size: 20,
+            validator: (v) {
+              if (v == null || v.isEmpty) return 'Enter a password';
+              if (v.length < 6) return 'Min 6 characters';
+              return null;
+            },
+          ).animate().fadeIn(delay: 50.ms, duration: 350.ms).slideY(begin: 0.15, end: 0, curve: Curves.easeOutCubic),
+          const SizedBox(height: 16),
+          _AnimatedTextField(
+            controller: _confirmPasswordController,
+            hint: 'Confirm Password',
+            icon: Icons.lock_outline_rounded,
+            obscure: _obscureConfirmPassword,
+            suffixIcon: IconButton(
+              icon: Icon(
+                _obscureConfirmPassword
+                    ? Icons.visibility_off_rounded
+                    : Icons.visibility_rounded,
+                color: AppTheme.onSurfaceVariant,
+                size: 20,
+              ),
+              onPressed: () =>
+                  setState(() => _obscureConfirmPassword = !_obscureConfirmPassword),
             ),
-            onPressed: () =>
-                setState(() => _obscureConfirmPassword = !_obscureConfirmPassword),
-          ),
-          validator: (v) {
-            if (v == null || v.isEmpty) return 'Confirm your password';
-            if (v != _passwordController.text) return 'Passwords do not match';
-            return null;
-          },
-        ).animate().fadeIn(delay: 330.ms, duration: 350.ms).slideY(begin: 0.15, end: 0, curve: Curves.easeOutCubic),
+            validator: (v) {
+              if (v == null || v.isEmpty) return 'Confirm your password';
+              if (v != _passwordController.text) return 'Passwords do not match';
+              return null;
+            },
+          ).animate().fadeIn(delay: 120.ms, duration: 350.ms).slideY(begin: 0.15, end: 0, curve: Curves.easeOutCubic),
+        ],
+
+        if (_currentStep == 2) ...[
+          _AnimatedTextField(
+            controller: _displayNameController,
+            hint: 'What should we call you?',
+            icon: Icons.person_rounded,
+            capitalization: TextCapitalization.words,
+            validator: (v) =>
+                v == null || v.trim().isEmpty ? 'Enter your name' : null,
+          ).animate().fadeIn(delay: 50.ms, duration: 350.ms).slideY(begin: 0.15, end: 0, curve: Curves.easeOutCubic),
+          const SizedBox(height: 16),
+          _AnimatedTextField(
+            controller: _usernameController,
+            hint: 'Pick a unique username',
+            icon: Icons.alternate_email_rounded,
+            validator: (v) =>
+                v == null || v.trim().isEmpty ? 'Pick a username' : null,
+          ).animate().fadeIn(delay: 120.ms, duration: 350.ms).slideY(begin: 0.15, end: 0, curve: Curves.easeOutCubic),
+        ],
       ],
     );
   }
