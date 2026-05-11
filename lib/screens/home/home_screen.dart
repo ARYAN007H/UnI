@@ -63,6 +63,7 @@ class _HomeScreenState extends State<HomeScreen> {
               color: AppTheme.surface,
               child: Stack(
                 children: [
+                  // Primary Orb
                   Positioned(
                     top: -100,
                     right: -100,
@@ -74,8 +75,38 @@ class _HomeScreenState extends State<HomeScreen> {
                         color: AppTheme.primary.withValues(alpha: 0.15),
                       ),
                     ).animate(onPlay: (c) => c.repeat())
-                     .move(duration: 10.seconds, begin: const Offset(0, 0), end: const Offset(-50, 50))
-                     .move(duration: 12.seconds, delay: 10.seconds, begin: const Offset(-50, 50), end: const Offset(0, 0)),
+                     .move(duration: 10.seconds, begin: const Offset(0, 0), end: const Offset(-50, 50), curve: Curves.easeInOutSine)
+                     .move(duration: 12.seconds, delay: 10.seconds, begin: const Offset(-50, 50), end: const Offset(0, 0), curve: Curves.easeInOutSine),
+                  ),
+                  // Secondary Orb
+                  Positioned(
+                    bottom: -50,
+                    left: -100,
+                    child: Container(
+                      width: 300,
+                      height: 300,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: AppTheme.secondary.withValues(alpha: 0.12),
+                      ),
+                    ).animate(onPlay: (c) => c.repeat())
+                     .move(duration: 15.seconds, begin: const Offset(0, 0), end: const Offset(60, -40), curve: Curves.easeInOutSine)
+                     .move(duration: 14.seconds, delay: 15.seconds, begin: const Offset(60, -40), end: const Offset(0, 0), curve: Curves.easeInOutSine),
+                  ),
+                  // Tertiary Orb
+                  Positioned(
+                    top: MediaQuery.of(context).size.height * 0.3,
+                    left: MediaQuery.of(context).size.width * 0.2,
+                    child: Container(
+                      width: 250,
+                      height: 250,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: AppTheme.tertiary.withValues(alpha: 0.1),
+                      ),
+                    ).animate(onPlay: (c) => c.repeat(reverse: true))
+                     .move(duration: 12.seconds, begin: const Offset(0, 0), end: const Offset(-30, 30), curve: Curves.easeInOutSine)
+                     .scale(begin: const Offset(1, 1), end: const Offset(1.2, 1.2), duration: 12.seconds, curve: Curves.easeInOutSine),
                   ),
                   Positioned.fill(
                     child: BackdropFilter(

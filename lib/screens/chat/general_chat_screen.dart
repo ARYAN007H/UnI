@@ -222,25 +222,61 @@ class _GeneralChatScreenState extends State<GeneralChatScreen> with WidgetsBindi
   Widget _appBar(ChannelColors c) => ClipRRect(child: BackdropFilter(
     filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
     child: Container(
-      padding: const EdgeInsets.fromLTRB(4, 8, 16, 12),
-      decoration: BoxDecoration(color: AppTheme.surface.withValues(alpha: 0.85), border: Border(bottom: BorderSide(color: c.accent.withValues(alpha: 0.08)))),
-      child: Row(children: [
-        IconButton(icon: const Icon(Icons.arrow_back_rounded, size: 22), color: AppTheme.onSurface, onPressed: () => Navigator.pop(context)),
-        Container(width: 38, height: 38, decoration: BoxDecoration(gradient: LinearGradient(colors: [c.gradientStart.withValues(alpha: 0.2), c.gradientEnd.withValues(alpha: 0.1)]), borderRadius: BorderRadius.circular(12)),
-          child: Center(child: Text(widget.channel.icon, style: const TextStyle(fontSize: 18)))),
-        const SizedBox(width: 12),
-        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('#${widget.channel.name}', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600)),
-          ListenableBuilder(listenable: widget.presenceService, builder: (_, __) {
-            final online = widget.presenceService.partnerOnline;
-            final name = widget.authService.partnerProfile?.displayName ?? 'Partner';
-            return Row(children: [
-              if (online) Container(width: 6, height: 6, margin: const EdgeInsets.only(right: 5), decoration: BoxDecoration(color: AppTheme.success, shape: BoxShape.circle, boxShadow: [BoxShadow(color: AppTheme.success.withValues(alpha: 0.4), blurRadius: 4)])),
-              Expanded(child: Text(online ? '$name is here ✨' : 'Your cozy corner together', style: Theme.of(context).textTheme.bodySmall?.copyWith(color: online ? AppTheme.success : AppTheme.onSurfaceVariant, fontSize: 12), maxLines: 1, overflow: TextOverflow.ellipsis)),
-            ]);
-          }),
-        ])),
-      ]),
+      decoration: BoxDecoration(
+        color: c.bgTint.withValues(alpha: 0.6),
+      ),
+      child: Stack(
+        alignment: Alignment.bottomCenter,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(4, 8, 16, 12),
+            child: Row(children: [
+              IconButton(icon: const Icon(Icons.arrow_back_rounded, size: 22), color: AppTheme.onSurface, onPressed: () => Navigator.pop(context)),
+              Container(
+                width: 38, height: 38, 
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(colors: [c.gradientStart.withValues(alpha: 0.2), c.gradientEnd.withValues(alpha: 0.1)]), 
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: [
+                    BoxShadow(color: c.accent.withValues(alpha: 0.3), blurRadius: 12, spreadRadius: 1),
+                  ],
+                ),
+                child: Center(child: Text(widget.channel.icon, style: const TextStyle(fontSize: 18)))
+              ),
+              const SizedBox(width: 12),
+              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('#${widget.channel.name}', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600)),
+                ListenableBuilder(listenable: widget.presenceService, builder: (_, __) {
+                  final online = widget.presenceService.partnerOnline;
+                  final name = widget.authService.partnerProfile?.displayName ?? 'Partner';
+                  return Row(children: [
+                    if (online) 
+                      Container(
+                        width: 8, height: 8, margin: const EdgeInsets.only(right: 6), 
+                        decoration: BoxDecoration(
+                          color: AppTheme.success, 
+                          shape: BoxShape.circle, 
+                          boxShadow: [
+                            BoxShadow(color: AppTheme.success.withValues(alpha: 0.6), blurRadius: 8, spreadRadius: 2)
+                          ]
+                        )
+                      ).animate(onPlay: (c) => c.repeat(reverse: true)).scaleXY(begin: 1.0, end: 1.2, duration: 1.seconds),
+                    Expanded(child: Text(online ? '$name is here ✨' : 'Your cozy corner together', style: Theme.of(context).textTheme.bodySmall?.copyWith(color: online ? AppTheme.success : AppTheme.onSurfaceVariant, fontSize: 12), maxLines: 1, overflow: TextOverflow.ellipsis)),
+                  ]);
+                }),
+              ])),
+            ]),
+          ),
+          Container(
+            height: 1,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [Colors.transparent, c.accent.withValues(alpha: 0.5), Colors.transparent],
+              ),
+            ),
+          ),
+        ],
+      ),
     ),
   ));
 

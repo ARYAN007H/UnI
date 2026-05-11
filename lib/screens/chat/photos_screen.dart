@@ -174,65 +174,81 @@ class _PhotosScreenState extends State<PhotosScreen> {
         child: BackdropFilter(
           filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
           child: Container(
-            padding: const EdgeInsets.fromLTRB(4, 8, 8, 12),
             decoration: BoxDecoration(
-              color: AppTheme.surface.withValues(alpha: 0.85),
-              border: Border(
-                  bottom: BorderSide(color: c.accent.withValues(alpha: 0.08))),
+              color: c.bgTint.withValues(alpha: 0.6),
             ),
-            child: Row(children: [
-              IconButton(
-                  icon: const Icon(Icons.arrow_back_rounded, size: 22),
-                  color: AppTheme.onSurface,
-                  onPressed: () => Navigator.pop(context)),
-              Container(
-                width: 38,
-                height: 38,
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(colors: [
-                    c.gradientStart.withValues(alpha: 0.2),
-                    c.gradientEnd.withValues(alpha: 0.1)
-                  ]),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child:
-                    const Center(child: Text('📸', style: TextStyle(fontSize: 18))),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('#photos',
-                          style: Theme.of(context)
-                              .textTheme
-                              .titleMedium
-                              ?.copyWith(fontWeight: FontWeight.w600)),
-                      ListenableBuilder(
-                        listenable: widget.chatService,
-                        builder: (_, __) {
-                          final count = _mediaMessages.length;
-                          return Text(
-                            count > 0
-                                ? '$count photo${count == 1 ? '' : 's'} shared'
-                                : 'Your moments together',
-                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                color: c.accent, fontSize: 12),
-                          );
-                        },
+            child: Stack(
+              alignment: Alignment.bottomCenter,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(4, 8, 8, 12),
+                  child: Row(children: [
+                    IconButton(
+                        icon: const Icon(Icons.arrow_back_rounded, size: 22),
+                        color: AppTheme.onSurface,
+                        onPressed: () => Navigator.pop(context)),
+                    Container(
+                      width: 38,
+                      height: 38,
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(colors: [
+                          c.gradientStart.withValues(alpha: 0.2),
+                          c.gradientEnd.withValues(alpha: 0.1)
+                        ]),
+                        borderRadius: BorderRadius.circular(12),
+                        boxShadow: [
+                          BoxShadow(color: c.accent.withValues(alpha: 0.3), blurRadius: 12, spreadRadius: 1),
+                        ],
                       ),
-                    ]),
-              ),
-              // View toggle
-              IconButton(
-                icon: Icon(
-                  _showGrid ? Icons.view_list_rounded : Icons.grid_view_rounded,
-                  color: AppTheme.onSurfaceVariant,
-                  size: 22,
+                      child:
+                          const Center(child: Text('📸', style: TextStyle(fontSize: 18))),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('#photos',
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .titleMedium
+                                    ?.copyWith(fontWeight: FontWeight.w600)),
+                            ListenableBuilder(
+                              listenable: widget.chatService,
+                              builder: (_, __) {
+                                final count = _mediaMessages.length;
+                                return Text(
+                                  count > 0
+                                      ? '$count photo${count == 1 ? '' : 's'} shared'
+                                      : 'Your moments together',
+                                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                      color: c.accent, fontSize: 12),
+                                );
+                              },
+                            ),
+                          ]),
+                    ),
+                    // View toggle
+                    IconButton(
+                      icon: Icon(
+                        _showGrid ? Icons.view_list_rounded : Icons.grid_view_rounded,
+                        color: AppTheme.onSurfaceVariant,
+                        size: 22,
+                      ),
+                      onPressed: () => setState(() => _showGrid = !_showGrid),
+                    ),
+                  ]),
                 ),
-                onPressed: () => setState(() => _showGrid = !_showGrid),
-              ),
-            ]),
+                Container(
+                  height: 1,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [Colors.transparent, c.accent.withValues(alpha: 0.5), Colors.transparent],
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       );

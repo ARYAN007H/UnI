@@ -124,16 +124,21 @@ class _QuickActionButtonState extends State<_QuickActionButton>
     with SingleTickerProviderStateMixin {
   late AnimationController _pressController;
   late Animation<double> _scaleAnimation;
+  late Animation<double> _glowAnimation;
 
   @override
   void initState() {
     super.initState();
     _pressController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 100),
+      duration: const Duration(milliseconds: 150),
+      reverseDuration: const Duration(milliseconds: 300),
     );
-    _scaleAnimation = Tween<double>(begin: 1.0, end: 0.9).animate(
-      CurvedAnimation(parent: _pressController, curve: Curves.easeInOut),
+    _scaleAnimation = Tween<double>(begin: 1.0, end: 0.85).animate(
+      CurvedAnimation(parent: _pressController, curve: Curves.easeOutCubic, reverseCurve: Curves.elasticOut),
+    );
+    _glowAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _pressController, curve: Curves.easeOutCubic),
     );
   }
 
@@ -153,40 +158,51 @@ class _QuickActionButtonState extends State<_QuickActionButton>
       },
       onTapCancel: () => _pressController.reverse(),
       child: AnimatedBuilder(
-        animation: _scaleAnimation,
+        animation: _pressController,
         builder: (context, child) => Transform.scale(
           scale: _scaleAnimation.value,
-          child: child,
-        ),
-        child: Container(
-          width: 64,
-          decoration: BoxDecoration(
-            color: AppTheme.surfaceContainer.withValues(alpha: 0.7),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: AppTheme.outline.withValues(alpha: 0.12),
-            ),
-          ),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(
-                widget.action.emoji,
-                style: const TextStyle(fontSize: 22),
+          child: Container(
+            width: 64,
+            decoration: BoxDecoration(
+              color: AppTheme.surfaceContainer.withValues(alpha: 0.7),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: AppTheme.primary.withValues(alpha: 0.15 + (_glowAnimation.value * 0.2)),
               ),
-              const SizedBox(height: 2),
-              Text(
+              boxShadow: [
+                if (_glowAnimation.value > 0)
+                  BoxShadow(
+                    color: AppTheme.primary.withValues(alpha: _glowAnimation.value * 0.4),
+                    blurRadius: 16,
+                    spreadRadius: 2,
+                  ),
+              ],
+            ),
+            child: child,
+          ),
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(
+              widget.action.emoji,
+              style: const TextStyle(fontSize: 22),
+            ),
+            const SizedBox(height: 2),
+            ShaderMask(
+              shaderCallback: (b) => AppTheme.primaryGradient.createShader(b),
+              child: Text(
                 widget.action.label,
-                style: TextStyle(
+                style: const TextStyle(
                   fontSize: 9,
-                  color: AppTheme.onSurfaceVariant.withValues(alpha: 0.6),
-                  fontWeight: FontWeight.w500,
+                  color: Colors.white,
+                  fontWeight: FontWeight.w700,
                 ),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
-      ),
+      ).animate(onPlay: (c) => c.repeat(reverse: true)).slideY(begin: 0.0, end: -0.05, duration: 1500.ms, curve: Curves.easeInOutSine),
     );
   }
 }

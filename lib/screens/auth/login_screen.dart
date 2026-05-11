@@ -304,31 +304,69 @@ class _LoginScreenState extends State<LoginScreen>
           children: [
             // Ambient drifting + pulsing background glow
             Positioned(
-              top: 0,
-              left: -70,
-              right: -70,
+              top: -100,
+              left: -100,
               child: AnimatedBuilder(
                 animation: Listenable.merge([_pulseController, _driftController]),
-                builder: (context, child) {
-                  final dx = (_driftController.value - 0.5) * 40;
-                  final dy = (_driftController.value - 0.5) * 24;
+                builder: (context, _) {
                   return Transform.translate(
-                    offset: Offset(dx, MediaQuery.of(context).size.height * 0.05 + dy),
-                    child: Transform.scale(
-                      scale: 1.0 + (_pulseController.value * 0.15),
-                      child: Opacity(
-                        opacity: 0.6 + (_pulseController.value * 0.4),
-                        child: child,
+                    offset: Offset((_driftController.value - 0.5) * 60, (_driftController.value - 0.5) * 40),
+                    child: Container(
+                      width: 400,
+                      height: 400,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: AppTheme.primary.withValues(alpha: 0.15 + (_pulseController.value * 0.1)),
+                        boxShadow: [
+                          BoxShadow(color: AppTheme.primary.withValues(alpha: 0.2), blurRadius: 100, spreadRadius: 40),
+                        ],
                       ),
                     ),
                   );
                 },
-                child: Container(
-                  height: 400,
-                  decoration: BoxDecoration(
-                    gradient: AppTheme.warmRadialGlow,
-                  ),
-                ),
+              ),
+            ),
+            Positioned(
+              bottom: -50,
+              right: -50,
+              child: AnimatedBuilder(
+                animation: Listenable.merge([_pulseController, _driftController]),
+                builder: (context, _) {
+                  return Transform.translate(
+                    offset: Offset(-(_driftController.value - 0.5) * 40, -(_driftController.value - 0.5) * 60),
+                    child: Container(
+                      width: 350,
+                      height: 350,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: AppTheme.secondary.withValues(alpha: 0.15 + ((1.0 - _pulseController.value) * 0.1)),
+                        boxShadow: [
+                          BoxShadow(color: AppTheme.secondary.withValues(alpha: 0.2), blurRadius: 120, spreadRadius: 50),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+            Positioned(
+              top: MediaQuery.of(context).size.height * 0.4,
+              left: MediaQuery.of(context).size.width * 0.2,
+              child: AnimatedBuilder(
+                animation: _pulseController,
+                builder: (context, _) {
+                  return Container(
+                    width: 250,
+                    height: 250,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: AppTheme.tertiary.withValues(alpha: 0.1 + (_pulseController.value * 0.1)),
+                      boxShadow: [
+                        BoxShadow(color: AppTheme.tertiary.withValues(alpha: 0.15), blurRadius: 80, spreadRadius: 30),
+                      ],
+                    ),
+                  );
+                },
               ),
             ),
             
@@ -363,7 +401,7 @@ class _LoginScreenState extends State<LoginScreen>
               ),
             ),
           ],
-        ),
+        ).animate().fadeIn(duration: 1.seconds),
       ),
     );
   }
@@ -435,7 +473,11 @@ class _LoginScreenState extends State<LoginScreen>
         filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
         child: Container(
           padding: const EdgeInsets.all(28),
-          decoration: AppTheme.glassCard(opacity: 0.7, borderOpacity: 0.15, radius: 28),
+          decoration: AppTheme.glassCard(opacity: 0.7, borderOpacity: 0.15, radius: 28).copyWith(
+            boxShadow: [
+              BoxShadow(color: AppTheme.primary.withValues(alpha: 0.1), blurRadius: 24, spreadRadius: 2),
+            ],
+          ),
           child: Form(
             key: _formKey,
             child: AnimatedSize(
@@ -724,7 +766,7 @@ class _LoginScreenState extends State<LoginScreen>
                 ),
         ),
       ),
-    );
+    ).animate(onPlay: (c) => c.repeat(reverse: true)).slideY(begin: -0.05, end: 0.05, duration: 2.seconds);
   }
 
   Widget _buildToggle() {

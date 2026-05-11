@@ -245,10 +245,30 @@ class _MessageBubbleState extends State<MessageBubble> with SingleTickerProvider
           ),
         ),
         clipBehavior: Clip.antiAlias,
-        child: Column(
-          crossAxisAlignment:
-              widget.isMine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+        child: Stack(
           children: [
+            if (widget.isMine)
+              Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                child: Container(
+                  height: 1,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [
+                        Colors.white.withValues(alpha: 0.15),
+                        Colors.transparent
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            Column(
+              crossAxisAlignment: widget.isMine
+                  ? CrossAxisAlignment.end
+                  : CrossAxisAlignment.start,
+              children: [
             // ── Media Content ─────────────────────────────
             if (isMedia && hasMediaUrl) _buildMediaContent(context),
 
@@ -264,18 +284,19 @@ class _MessageBubbleState extends State<MessageBubble> with SingleTickerProvider
               ),
 
             // ── Text Content ──────────────────────────────
-            Padding(
-              padding: EdgeInsets.fromLTRB(
-                14,
-                isMedia && hasMediaUrl ? 6 : 10,
-                14,
-                6,
-              ),
-              child: Column(
-                crossAxisAlignment: widget.isMine
-                    ? CrossAxisAlignment.end
-                    : CrossAxisAlignment.start,
-                children: [
+            if (!(isMedia && hasMediaUrl && (widget.message.content == null || widget.message.content!.isEmpty)))
+              Padding(
+                padding: EdgeInsets.fromLTRB(
+                  14,
+                  isMedia && hasMediaUrl ? 6 : 10,
+                  14,
+                  6,
+                ),
+                child: Column(
+                  crossAxisAlignment: widget.isMine
+                      ? CrossAxisAlignment.end
+                      : CrossAxisAlignment.start,
+                  children: [
                   if (widget.message.content != null &&
                       widget.message.content!.isNotEmpty &&
                       widget.message.type != MessageType.voice)
@@ -412,6 +433,36 @@ class _MessageBubbleState extends State<MessageBubble> with SingleTickerProvider
               child: const Icon(Icons.play_arrow_rounded,
                   color: Colors.white, size: 28),
             ),
+
+          // Time overlay for media without text
+          if (widget.message.content == null || widget.message.content!.isEmpty)
+            Positioned(
+              bottom: 8,
+              right: 8,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.4),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      DateFormat.jm().format(widget.message.createdAt.toLocal()),
+                      style: const TextStyle(
+                        fontSize: 10,
+                        color: Colors.white70,
+                      ),
+                    ),
+                    if (widget.isMine) ...[
+                      const SizedBox(width: 4),
+                      _readStatus(light: true),
+                    ],
+                  ],
+                ),
+              ),
+            ),
         ],
       ),
     );
@@ -447,14 +498,14 @@ class _MessageBubbleState extends State<MessageBubble> with SingleTickerProvider
     );
   }
 
-  Widget _readStatus() {
+  Widget _readStatus({bool light = false}) {
     final isRead = widget.message.readBy.length > 1;
     final icon = Icon(
       isRead ? Icons.done_all_rounded : Icons.done_rounded,
       size: 14,
       color: isRead
           ? AppTheme.secondary // Warm amber for read
-          : AppTheme.onSurfaceVariant.withValues(alpha: 0.4),
+          : (light ? Colors.white70 : AppTheme.onSurfaceVariant.withValues(alpha: 0.4)),
     );
 
     if (widget.isVanillaMode || !isRead) {
@@ -462,15 +513,27 @@ class _MessageBubbleState extends State<MessageBubble> with SingleTickerProvider
     }
 
     // Blooming effect for read receipts if not vanilla
-    return icon
-        .animate(key: ValueKey('read_${widget.message.id}'))
-        .scale(
-          begin: const Offset(0.5, 0.5),
-          end: const Offset(1.0, 1.0),
-          duration: 300.ms,
-          curve: Curves.elasticOut,
-        )
-        .fadeIn(duration: 200.ms);
+    return Stack(
+      alignment: Alignment.center,
+      clipBehavior: Clip.none,
+      children: [
+        icon
+            .animate(key: ValueKey('read_${widget.message.id}'))
+            .scaleXY(begin: 0.5, end: 1.0, duration: 300.ms, curve: Curves.elasticOut)
+            .fadeIn(duration: 200.ms),
+        Positioned.fill(
+          child: Container(
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(color: AppTheme.secondary, width: 2),
+            ),
+          )
+          .animate(key: ValueKey('read_ring_${widget.message.id}'))
+          .scaleXY(begin: 1.0, end: 2.0, duration: 600.ms, curve: Curves.easeOut)
+          .fadeOut(begin: 0.6, duration: 600.ms),
+        ),
+      ],
+    );
   }
 
   Widget _buildDeleted(BuildContext context) {
@@ -518,16 +581,18 @@ class _MessageBubbleState extends State<MessageBubble> with SingleTickerProvider
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
-      builder: (ctx) => Container(
-        decoration: BoxDecoration(
-          color: AppTheme.surfaceContainer,
-          borderRadius:
-              const BorderRadius.vertical(top: Radius.circular(24)),
-          border: Border(
-            top: BorderSide(
-                color: AppTheme.outline.withValues(alpha: 0.2)),
+      builder: (ctx) => BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+        child: Container(
+          decoration: BoxDecoration(
+            color: AppTheme.primary.withValues(alpha: 0.08),
+            borderRadius:
+                const BorderRadius.vertical(top: Radius.circular(24)),
+            border: Border(
+              top: BorderSide(
+                  color: AppTheme.primary.withValues(alpha: 0.2)),
+            ),
           ),
-        ),
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 8),
           child: Column(

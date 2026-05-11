@@ -65,9 +65,9 @@ class CoupleHeader extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   _buildAvatar(myProfile, true, partnerOnline: true),
-                  const SizedBox(width: 8),
+                  _buildHeartbeatLine(reverse: true),
                   _buildConnectingHeart(),
-                  const SizedBox(width: 8),
+                  _buildHeartbeatLine(reverse: false),
                   _buildAvatar(partnerProfile, false, partnerOnline: partnerOnline),
                 ],
               ),
@@ -144,6 +144,15 @@ class CoupleHeader extends StatelessWidget {
                 border: isOnline
                     ? null
                     : Border.all(color: AppTheme.outline.withValues(alpha: 0.2)),
+                boxShadow: isOnline
+                    ? [
+                        BoxShadow(
+                          color: AppTheme.primary.withValues(alpha: 0.25),
+                          blurRadius: 20,
+                          spreadRadius: 4,
+                        ),
+                      ]
+                    : null,
               ),
               padding: const EdgeInsets.all(2.5),
               child: CircleAvatar(
@@ -228,7 +237,8 @@ class CoupleHeader extends StatelessWidget {
             end: const Offset(1.1, 1.1),
             duration: 1200.ms,
             curve: Curves.easeInOutSine,
-          );
+          )
+          .rotate(begin: -0.05, end: 0.05, duration: 600.ms, curve: Curves.easeInOut);
     }
 
     return heart;
@@ -263,7 +273,7 @@ class CoupleHeader extends StatelessWidget {
                   fontWeight: FontWeight.w600,
                   fontSize: 12,
                 ),
-          ),
+          ).animate(onPlay: (c) => c.repeat(delay: 2.seconds)).shimmer(duration: 1500.ms, color: Colors.white54),
         ],
       ),
     );
@@ -273,6 +283,22 @@ class CoupleHeader extends StatelessWidget {
     final lastSeen = presenceService.partnerLastSeen ?? partnerProfile?.lastSeen;
     if (lastSeen == null) return 'offline';
     return timeago.format(lastSeen);
+  }
+
+  Widget _buildHeartbeatLine({required bool reverse}) {
+    return Container(
+      height: 2,
+      width: 24,
+      margin: const EdgeInsets.symmetric(horizontal: 4),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: reverse
+              ? [AppTheme.primary.withValues(alpha: 0.0), AppTheme.primary.withValues(alpha: 0.8)]
+              : [AppTheme.primary.withValues(alpha: 0.8), AppTheme.primary.withValues(alpha: 0.0)],
+        ),
+      ),
+    ).animate(onPlay: (c) => c.repeat(reverse: true))
+     .fadeIn(begin: 0.2, duration: 800.ms, curve: Curves.easeInOut);
   }
 }
 

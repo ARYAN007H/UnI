@@ -5,7 +5,7 @@ import '../config/theme.dart';
 import '../models/models.dart';
 
 /// A rich, visually distinct channel card with per-channel color identity.
-class ChannelCard extends StatelessWidget {
+class ChannelCard extends StatefulWidget {
   final Channel channel;
   final VoidCallback onTap;
   final String? previewText;
@@ -20,107 +20,179 @@ class ChannelCard extends StatelessWidget {
   });
 
   @override
+  State<ChannelCard> createState() => _ChannelCardState();
+}
+
+class _ChannelCardState extends State<ChannelCard> with SingleTickerProviderStateMixin {
+  late AnimationController _pressController;
+  late Animation<double> _scaleAnimation;
+  bool _isHovered = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _pressController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 150),
+    );
+    _scaleAnimation = Tween<double>(begin: 1.0, end: 0.97).animate(
+      CurvedAnimation(parent: _pressController, curve: Curves.easeOutCubic),
+    );
+  }
+
+  @override
+  void dispose() {
+    _pressController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final colors = AppTheme.colorsFor(channel.type);
+    final colors = AppTheme.colorsFor(widget.channel.type);
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 16),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(20),
-          splashColor: colors.accent.withValues(alpha: 0.08),
-          highlightColor: colors.accent.withValues(alpha: 0.04),
+      child: GestureDetector(
+        onTapDown: (_) {
+          _pressController.forward();
+          setState(() => _isHovered = true);
+        },
+        onTapUp: (_) {
+          _pressController.reverse();
+          setState(() => _isHovered = false);
+          HapticFeedback.lightImpact();
+          widget.onTap();
+        },
+        onTapCancel: () {
+          _pressController.reverse();
+          setState(() => _isHovered = false);
+        },
+        behavior: HitTestBehavior.opaque,
+        child: AnimatedBuilder(
+          animation: _scaleAnimation,
+          builder: (context, child) => Transform.scale(
+            scale: _scaleAnimation.value,
+            child: child,
+          ),
           child: ClipRRect(
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: BorderRadius.circular(24),
             child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+              filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
               child: Container(
-                padding: const EdgeInsets.all(16),
-                decoration: AppTheme.channelCard(channel.type, radius: 24),
-                child: Row(
-                  children: [
-                    // Accent bar
-                    Container(
-                      width: 4,
-                      height: 48,
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [colors.gradientStart, colors.gradientEnd],
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                        ),
-                        borderRadius: BorderRadius.circular(2),
-                        boxShadow: [
-                          BoxShadow(
-                            color: colors.accent.withValues(alpha: 0.3),
-                            blurRadius: 8,
-                          ),
-                        ],
-                      ),
+                decoration: AppTheme.channelCard(widget.channel.type, radius: 24),
+                child: Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(24),
+                    gradient: LinearGradient(
+                      colors: [
+                        colors.accent.withValues(alpha: 0.08),
+                        Colors.transparent,
+                      ],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
                     ),
-                    const SizedBox(width: 14),
-                    // Channel icon
-                    Container(
-                      width: 48,
-                      height: 48,
-                      decoration: BoxDecoration(
-                        color: colors.iconBg,
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(
-                          color: colors.accent.withValues(alpha: 0.1),
-                        ),
-                      ),
-                      child: Center(
-                        child: Text(
-                          channel.icon,
-                          style: const TextStyle(fontSize: 24),
+                  ),
+                  child: Row(
+                    children: [
+                      // Accent bar
+                      Container(
+                        width: 4,
+                        height: 48,
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [colors.gradientStart, colors.gradientEnd],
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                          ),
+                          borderRadius: BorderRadius.circular(2),
+                          boxShadow: [
+                            BoxShadow(
+                              color: colors.accent.withValues(alpha: 0.4),
+                              blurRadius: 8,
+                            ),
+                          ],
                         ),
                       ),
-                    ),
-                    const SizedBox(width: 14),
-                    // Channel info
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            '#${channel.name}',
-                            style: Theme.of(context)
-                                .textTheme
-                                .titleMedium
-                                ?.copyWith(
-                                  fontWeight: FontWeight.w600,
-                                  color: AppTheme.onSurface,
-                                ),
+                      const SizedBox(width: 14),
+                      // Channel icon
+                      Container(
+                        width: 48,
+                        height: 48,
+                        decoration: BoxDecoration(
+                          color: colors.iconBg,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(
+                            color: colors.accent.withValues(alpha: 0.15),
                           ),
-                          const SizedBox(height: 3),
-                          Text(
-                            previewText ?? channel.description,
-                            style: Theme.of(context)
-                                .textTheme
-                                .bodySmall
-                                ?.copyWith(
-                                  color: previewText != null
-                                      ? AppTheme.onSurfaceVariant.withValues(alpha: 0.8)
-                                      : AppTheme.onSurfaceVariant.withValues(alpha: 0.5),
-                                  fontSize: 12,
-                                ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.white.withValues(alpha: 0.06),
+                              blurRadius: 4,
+                              offset: const Offset(-1, -1), // Inner light simulation
+                            ),
+                            BoxShadow(
+                              color: colors.accent.withValues(alpha: 0.1),
+                              blurRadius: 8,
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
+                        ),
+                        child: Center(
+                          child: Text(
+                            widget.channel.icon,
+                            style: const TextStyle(fontSize: 24),
                           ),
-                        ],
+                        ),
                       ),
-                    ),
-                    if (trailingWidget != null) trailingWidget!,
-                    if (trailingWidget == null)
-                      Icon(
-                        Icons.chevron_right_rounded,
-                        color: colors.accent.withValues(alpha: 0.4),
-                        size: 20,
+                      const SizedBox(width: 14),
+                      // Channel info
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '#${widget.channel.name}',
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .titleMedium
+                                  ?.copyWith(
+                                    fontWeight: FontWeight.w600,
+                                    color: AppTheme.onSurface,
+                                  ),
+                            ),
+                            const SizedBox(height: 3),
+                            Text(
+                              widget.previewText ?? widget.channel.description,
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .bodySmall
+                                  ?.copyWith(
+                                    color: widget.previewText != null
+                                        ? AppTheme.onSurfaceVariant.withValues(alpha: 0.8)
+                                        : AppTheme.onSurfaceVariant.withValues(alpha: 0.5),
+                                    fontSize: 12,
+                                  ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ),
                       ),
-                  ],
+                      if (widget.trailingWidget != null) widget.trailingWidget!,
+                      if (widget.trailingWidget == null)
+                        AnimatedSlide(
+                          offset: _isHovered ? const Offset(0.2, 0) : Offset.zero,
+                          duration: const Duration(milliseconds: 200),
+                          curve: Curves.easeOutCubic,
+                          child: Icon(
+                            Icons.chevron_right_rounded,
+                            color: colors.accent.withValues(alpha: 0.4),
+                            size: 20,
+                          ),
+                        ),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -153,11 +225,12 @@ class UnreadBadge extends StatelessWidget {
           colors: [color, color.withValues(alpha: 0.8)],
         ),
         borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.3), width: 1.5),
         boxShadow: [
           BoxShadow(
-            color: color.withValues(alpha: 0.4),
-            blurRadius: 8,
-            spreadRadius: 1,
+            color: color.withValues(alpha: 0.6),
+            blurRadius: 12,
+            spreadRadius: 2,
           ),
         ],
       ),

@@ -114,24 +114,45 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 // Your profile
                 Row(
                   children: [
-                    // Avatar
-                    Container(
-                      width: 56,
-                      height: 56,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        gradient: AppTheme.primaryGradient,
-                      ),
-                      child: Center(
-                        child: Text(
-                          (profile?.displayName ?? 'U')[0].toUpperCase(),
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w800,
-                            fontSize: 22,
+                    Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        Container(
+                          width: 60,
+                          height: 60,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            gradient: SweepGradient(
+                              colors: [AppTheme.primary, AppTheme.secondary, AppTheme.primary],
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: AppTheme.primary.withValues(alpha: 0.25),
+                                blurRadius: 24,
+                                spreadRadius: 2,
+                              ),
+                            ],
+                          ),
+                        ).animate(onPlay: (c) => c.repeat()).rotate(duration: 4.seconds),
+                        Container(
+                          width: 54,
+                          height: 54,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: AppTheme.surfaceContainerHigh,
+                          ),
+                          child: Center(
+                            child: Text(
+                              (profile?.displayName ?? 'U')[0].toUpperCase(),
+                              style: TextStyle(
+                                color: AppTheme.primary,
+                                fontWeight: FontWeight.w800,
+                                fontSize: 22,
+                              ),
+                            ),
                           ),
                         ),
-                      ),
+                      ],
                     ),
                     const SizedBox(width: 16),
                     Expanded(
@@ -205,28 +226,42 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                     child: Row(
                       children: [
-                        Container(
-                          width: 36,
-                          height: 36,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            gradient: LinearGradient(
-                              colors: [
-                                AppTheme.secondary.withValues(alpha: 0.4),
-                                AppTheme.primary.withValues(alpha: 0.3),
-                              ],
-                            ),
-                          ),
-                          child: Center(
-                            child: Text(
-                              partner.displayName[0].toUpperCase(),
-                              style: TextStyle(
-                                color: AppTheme.secondary,
-                                fontWeight: FontWeight.w700,
-                                fontSize: 14,
+                        Stack(
+                          alignment: Alignment.bottomRight,
+                          children: [
+                            Container(
+                              width: 40,
+                              height: 40,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                gradient: LinearGradient(
+                                  colors: [
+                                    AppTheme.secondary.withValues(alpha: 0.4),
+                                    AppTheme.primary.withValues(alpha: 0.3),
+                                  ],
+                                ),
+                              ),
+                              child: Center(
+                                child: Text(
+                                  partner.displayName[0].toUpperCase(),
+                                  style: TextStyle(
+                                    color: AppTheme.secondary,
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 14,
+                                  ),
+                                ),
                               ),
                             ),
-                          ),
+                            Container(
+                              width: 12,
+                              height: 12,
+                              decoration: BoxDecoration(
+                                color: AppTheme.success,
+                                shape: BoxShape.circle,
+                                border: Border.all(color: AppTheme.surfaceContainerHigh, width: 2),
+                              ),
+                            ).animate(onPlay: (c) => c.repeat(reverse: true)).scaleXY(begin: 1.0, end: 1.2, duration: 1.seconds),
+                          ],
                         ),
                         const SizedBox(width: 12),
                         Expanded(
@@ -270,6 +305,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
         final days = DateTime.now().difference(couple.pairedAt).inDays;
 
+        final daysProgress = (days % 365) / 365.0;
+        final channelCount = widget.chatService.channels.length;
+        final channelProgress = (channelCount / 10).clamp(0.0, 1.0);
+        double annivProgress = 0.5;
+        if (couple.anniversaryDate != null) {
+          final now = DateTime.now();
+          DateTime nextAnniv = DateTime(now.year, couple.anniversaryDate!.month, couple.anniversaryDate!.day);
+          if (nextAnniv.isBefore(now)) {
+            nextAnniv = DateTime(now.year + 1, couple.anniversaryDate!.month, couple.anniversaryDate!.day);
+          }
+          final daysToAnniv = nextAnniv.difference(now).inDays;
+          annivProgress = 1.0 - (daysToAnniv / 365.0).clamp(0.0, 1.0);
+        }
+
         return Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           child: Container(
@@ -277,8 +326,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             decoration: AppTheme.glassCard(opacity: 0.3, borderOpacity: 0.1, radius: 20),
             child: Row(
               children: [
-                _statItem(context, '❤️', '$days', 'Days Together'),
-                Container(width: 1, height: 36, color: AppTheme.outline.withValues(alpha: 0.2)),
+                _statItem(context, '❤️', '$days', 'Days Together', daysProgress),
                 _statItem(
                   context,
                   '📅',
@@ -286,13 +334,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ? '${couple.anniversaryDate!.month}/${couple.anniversaryDate!.day}'
                       : '—',
                   'Anniversary',
+                  annivProgress,
                 ),
-                Container(width: 1, height: 36, color: AppTheme.outline.withValues(alpha: 0.2)),
                 _statItem(
                   context,
                   '💬',
-                  '${widget.chatService.channels.length}',
+                  '$channelCount',
                   'Channels',
+                  channelProgress,
                 ),
               ],
             ),
@@ -302,15 +351,35 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  Widget _statItem(BuildContext ctx, String emoji, String value, String label) {
+  Widget _statItem(BuildContext ctx, String emoji, String value, String label, double progress) {
     return Expanded(
       child: Column(
         children: [
-          Text(emoji, style: const TextStyle(fontSize: 18)),
-          const SizedBox(height: 4),
+          SizedBox(
+            width: 48,
+            height: 48,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                SizedBox(
+                  width: 48,
+                  height: 48,
+                  child: CircularProgressIndicator(
+                    value: progress,
+                    strokeWidth: 3,
+                    backgroundColor: AppTheme.outline.withValues(alpha: 0.1),
+                    color: AppTheme.primary,
+                    strokeCap: StrokeCap.round,
+                  ),
+                ),
+                Text(emoji, style: const TextStyle(fontSize: 16)),
+              ],
+            ),
+          ).animate().scale(delay: 200.ms, duration: 400.ms, curve: Curves.easeOutBack),
+          const SizedBox(height: 8),
           Text(
             value,
-            style: Theme.of(ctx).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+            style: Theme.of(ctx).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
           ),
           Text(
             label,
@@ -324,87 +393,132 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Widget _buildThemePicker(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: Container(
-        padding: const EdgeInsets.all(20),
-        decoration: AppTheme.glassCard(opacity: 0.3, borderOpacity: 0.1, radius: 20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
+      child: ListenableBuilder(
+        listenable: widget.authService,
+        builder: (context, _) {
+          final currentHex = widget.authService.couple?.themeColorHex ?? '#FFFF6B6B';
+          final currentColor = Color(int.parse(currentHex.replaceAll('#', 'FF'), radix: 16));
+
+          return Container(
+            padding: const EdgeInsets.all(20),
+            decoration: AppTheme.glassCard(opacity: 0.3, borderOpacity: 0.1, radius: 20).copyWith(
+              color: currentColor.withValues(alpha: 0.05), // Live tint
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(Icons.palette_rounded, size: 18, color: AppTheme.primary),
-                const SizedBox(width: 8),
-                Text(
-                  'App Theme',
-                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w600,
-                      ),
+                Row(
+                  children: [
+                    Icon(Icons.palette_rounded, size: 18, color: currentColor),
+                    const SizedBox(width: 8),
+                    Text(
+                      'App Theme',
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w600,
+                            color: currentColor,
+                          ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                SizedBox(
+                  height: 72, // Increased height for label
+                  child: Builder(
+                    builder: (context) {
+                      const presetColors = [
+                        {'name': 'Passionate Coral', 'hex': '#FFFF6B6B'},
+                        {'name': 'Ocean Blue', 'hex': '#FF4A90E2'},
+                        {'name': 'Lavender Haze', 'hex': '#FF9B51E0'},
+                        {'name': 'Emerald Forest', 'hex': '#FF27AE60'},
+                        {'name': 'Golden Hour', 'hex': '#FFF2C94C'},
+                        {'name': 'Rose Pink', 'hex': '#FFE91E63'},
+                        {'name': 'Teal Dream', 'hex': '#FF009688'},
+                      ];
+
+                      return ListView.separated(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: presetColors.length,
+                        separatorBuilder: (_, __) => const SizedBox(width: 14),
+                        itemBuilder: (context, index) {
+                          final hex = presetColors[index]['hex']!;
+                          final name = presetColors[index]['name']!;
+                          final color = Color(int.parse(hex.replaceAll('#', 'FF'), radix: 16));
+                          final hsl = HSLColor.fromColor(color);
+                          final lighterColor = hsl.withLightness((hsl.lightness + 0.15).clamp(0.0, 1.0)).toColor();
+                          final isSelected = currentHex.toUpperCase() == hex.toUpperCase();
+
+                          return GestureDetector(
+                            onTap: () {
+                              HapticFeedback.lightImpact();
+                              widget.authService.updateThemeColor(hex);
+                            },
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Stack(
+                                  alignment: Alignment.center,
+                                  children: [
+                                    if (isSelected)
+                                      Container(
+                                        width: 48,
+                                        height: 48,
+                                        decoration: BoxDecoration(
+                                          shape: BoxShape.circle,
+                                          boxShadow: [
+                                            BoxShadow(
+                                              color: color.withValues(alpha: 0.6),
+                                              blurRadius: 16,
+                                              spreadRadius: 2,
+                                            ),
+                                          ],
+                                        ),
+                                      ).animate(onPlay: (c) => c.repeat(reverse: true)).scaleXY(begin: 1.0, end: 1.05, duration: 1.seconds),
+                                    AnimatedContainer(
+                                      duration: const Duration(milliseconds: 200),
+                                      width: 48,
+                                      height: 48,
+                                      decoration: BoxDecoration(
+                                        shape: BoxShape.circle,
+                                        gradient: LinearGradient(
+                                          colors: [lighterColor, color],
+                                          begin: Alignment.topLeft,
+                                          end: Alignment.bottomRight,
+                                        ),
+                                        border: isSelected
+                                            ? Border.all(color: Colors.white, width: 2)
+                                            : Border.all(color: Colors.white.withValues(alpha: 0.2), width: 1),
+                                      ),
+                                      child: isSelected
+                                          ? const Icon(Icons.check_rounded, color: Colors.white, size: 22)
+                                          : null,
+                                    ),
+                                  ],
+                                ),
+                                if (isSelected)
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 6),
+                                    child: Text(
+                                      name,
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w600,
+                                        color: color,
+                                      ),
+                                    ).animate().fadeIn(duration: 200.ms).slideY(begin: -0.2, end: 0, duration: 200.ms),
+                                  ),
+                              ],
+                            ),
+                          );
+                        },
+                      );
+                    },
+                  ),
                 ),
               ],
             ),
-            const SizedBox(height: 16),
-            SizedBox(
-              height: 52,
-              child: ListenableBuilder(
-                listenable: widget.authService,
-                builder: (context, _) {
-                  final currentHex = widget.authService.couple?.themeColorHex ?? '#FFFF6B6B';
-
-                  const presetColors = [
-                    {'name': 'Passionate Coral', 'hex': '#FFFF6B6B'},
-                    {'name': 'Ocean Blue', 'hex': '#FF4A90E2'},
-                    {'name': 'Lavender Haze', 'hex': '#FF9B51E0'},
-                    {'name': 'Emerald Forest', 'hex': '#FF27AE60'},
-                    {'name': 'Golden Hour', 'hex': '#FFF2C94C'},
-                    {'name': 'Rose Pink', 'hex': '#FFE91E63'},
-                    {'name': 'Teal Dream', 'hex': '#FF009688'},
-                  ];
-
-                  return ListView.separated(
-                    scrollDirection: Axis.horizontal,
-                    itemCount: presetColors.length,
-                    separatorBuilder: (_, __) => const SizedBox(width: 14),
-                    itemBuilder: (context, index) {
-                      final hex = presetColors[index]['hex']!;
-                      final name = presetColors[index]['name']!;
-                      final color = Color(int.parse(hex.replaceAll('#', 'FF'), radix: 16));
-                      final isSelected = currentHex.toUpperCase() == hex.toUpperCase();
-
-                      return GestureDetector(
-                        onTap: () {
-                          HapticFeedback.lightImpact();
-                          widget.authService.updateThemeColor(hex);
-                        },
-                        child: Tooltip(
-                          message: name,
-                          child: AnimatedContainer(
-                            duration: const Duration(milliseconds: 200),
-                            width: 52,
-                            height: 52,
-                            decoration: BoxDecoration(
-                              color: color,
-                              shape: BoxShape.circle,
-                              border: isSelected
-                                  ? Border.all(color: Colors.white, width: 3)
-                                  : Border.all(color: Colors.white.withValues(alpha: 0.1), width: 1),
-                              boxShadow: isSelected
-                                  ? [BoxShadow(color: color.withValues(alpha: 0.5), blurRadius: 12, spreadRadius: 2)]
-                                  : null,
-                            ),
-                            child: isSelected
-                                ? const Icon(Icons.check_rounded, color: Colors.white, size: 22)
-                                : null,
-                          ),
-                        ),
-                      );
-                    },
-                  );
-                },
-              ),
-            ),
-          ],
-        ),
-      ).animate().fadeIn(delay: 200.ms, duration: 300.ms),
+          ).animate().fadeIn(delay: 200.ms, duration: 300.ms);
+        },
+      ),
     );
   }
 
