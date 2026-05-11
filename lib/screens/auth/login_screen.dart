@@ -1,5 +1,6 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../../config/theme.dart';
 import '../../services/auth_service.dart';
@@ -134,9 +135,13 @@ class _LoginScreenState extends State<LoginScreen>
           _showVerificationPrompt();
         }
       }
+    } on AuthException catch (e) {
+      setState(() {
+        _error = e.message;
+      });
     } catch (e) {
       setState(() {
-        _error = e.toString().replaceAll('Exception: ', '').replaceAll('AuthException(message: ', '').replaceAll(', statusCode: 400)', '');
+        _error = e.toString().replaceAll('Exception: ', '');
       });
     } finally {
       if (mounted) setState(() => _loading = false);
