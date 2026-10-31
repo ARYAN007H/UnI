@@ -1,28 +1,28 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+
 import 'config/supabase_config.dart';
-import 'config/theme.dart';
+import 'core/theme/theme.dart';
+import 'core/widgets/widgets.dart';
+import 'features/auth/auth_screen.dart';
+import 'features/onboarding/onboarding_flow.dart';
+import 'features/shell/home_shell.dart';
 import 'services/auth_service.dart';
-import 'services/backup_service.dart';
 import 'services/chat_service.dart';
+import 'services/daily_question_service.dart';
 import 'services/local_cache_service.dart';
 import 'services/media_service.dart';
 import 'services/notification_service.dart';
-import 'services/permission_service.dart';
 import 'services/presence_service.dart';
-import 'screens/auth/login_screen.dart';
-import 'screens/auth/pair_screen.dart';
-import 'screens/auth/verify_email_screen.dart';
-import 'screens/home/home_screen.dart';
-import 'screens/setup/permission_screen.dart';
 
-void main() async {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Global error handler — ensures uncaught errors don't blank the screen
+  // Global error handler — ensures uncaught errors don't blank the screen.
   FlutterError.onError = (details) {
     FlutterError.presentError(details);
     debugPrint('[FATAL] FlutterError: ${details.exception}');
@@ -34,13 +34,13 @@ void main() async {
     debugPrint('[INIT] .env load failed (may be normal on web): $e');
   }
 
-  // SystemChrome is mobile-only
+  // SystemChrome is mobile-only.
   if (!kIsWeb) {
     SystemChrome.setSystemUIOverlayStyle(
       const SystemUiOverlayStyle(
         statusBarColor: Colors.transparent,
         statusBarIconBrightness: Brightness.light,
-        systemNavigationBarColor: Color(0xFF131118),
+        systemNavigationBarColor: Color(0xFF171412),
         systemNavigationBarIconBrightness: Brightness.light,
       ),
     );
@@ -49,33 +49,34 @@ void main() async {
   try {
     await Supabase.initialize(
       url: SupabaseConfig.url,
-      anonKey: SupabaseConfig.anonKey,
+      publishableKey: SupabaseConfig.publishableKey,
     );
   } catch (e) {
     debugPrint('[INIT] Supabase init failed: $e');
-    runApp(const _ErrorApp(message: 'Failed to connect. Check your internet and try again.'));
+    runApp(const _ErrorApp(
+        message: 'Failed to connect. Check your internet and try again.'));
     return;
   }
 
-  // Initialize local cache early
+  // Local cache early — mandatory for the local-first UI (plan §7.1).
   LocalCacheService? localCache;
   try {
     localCache = LocalCacheService();
     await localCache.initialize();
   } catch (e) {
     debugPrint('[INIT] LocalCache init failed: $e');
-    // Continue without cache — app still works via network
-    localCache = null;
   }
 
-  runApp(UAndI(localCacheService: localCache));
-}
+  final prefs = await SharedPreferences.getInstance();
 
+  runApp(UAndI(localCacheService: localCache, prefs: prefs));
+}
 
 class UAndI extends StatefulWidget {
   final LocalCacheService? localCacheService;
+  final SharedPreferences prefs;
 
-  const UAndI({super.key, this.localCacheService});
+  const UAndI({super.key, this.localCacheService, required this.prefs});
 
   @override
   State<UAndI> createState() => _UAndIState();
@@ -87,10 +88,8 @@ class _UAndIState extends State<UAndI> {
   late final PresenceService _presenceService;
   late final MediaService _mediaService;
   late final NotificationService _notificationService;
-  late final PermissionService _permissionService;
-  late final BackupService _backupService;
-
-  String? _lastThemeColorHex;
+  late final DailyQuestionService _dailyQuestionService;
+  late final ThemeController _themeController;
 
   @override
   void initState() {
@@ -100,36 +99,25 @@ class _UAndIState extends State<UAndI> {
     _presenceService = PresenceService();
     _mediaService = MediaService(cache: widget.localCacheService);
     _notificationService = NotificationService();
-    _permissionService = PermissionService();
-    _backupService = BackupService(widget.localCacheService);
+    _dailyQuestionService = DailyQuestionService(cache: widget.localCacheService);
+    _themeController = ThemeController();
 
-    _permissionService.initialize();
-    _backupService.initialize();
     _authService.addListener(_onAuthChanged);
   }
 
   void _onAuthChanged() {
-    if (_authService.couple != null && _authService.currentUser != null) {
+    final couple = _authService.couple;
+    final user = _authService.currentUser;
+    if (couple != null && user != null) {
       _chatService.initialize(
-        _authService.couple!.id,
+        couple.id,
         cache: widget.localCacheService,
         mediaService: _mediaService,
       );
-      _presenceService.subscribe(
-        _authService.couple!.id,
-        _authService.currentUser!.id,
-      );
-      _chatService.subscribeToTyping(
-        _authService.couple!.id,
-        _authService.currentUser!.id,
-      );
-      _notificationService.initialize(_authService.currentUser!.id);
-
-      final newColorHex = _authService.couple!.themeColorHex;
-      if (newColorHex != _lastThemeColorHex) {
-        _lastThemeColorHex = newColorHex;
-        AppTheme.initializeTheme(newColorHex);
-      }
+      _presenceService.subscribe(couple.id, user.id);
+      _chatService.subscribeToTyping(couple.id, user.id); // kept no-op (§7.3)
+      _notificationService.initialize(user.id);
+      _themeController.applyCoupleColor(couple.themeColorHex);
     }
   }
 
@@ -141,60 +129,49 @@ class _UAndIState extends State<UAndI> {
     _presenceService.dispose();
     _mediaService.dispose();
     _notificationService.dispose();
+    _dailyQuestionService.dispose();
+    _themeController.dispose();
     widget.localCacheService?.close();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return ListenableBuilder(
-      listenable: _authService,
-      builder: (context, _) {
-        if (_authService.couple != null) {
-          final newColorHex = _authService.couple!.themeColorHex;
-          if (newColorHex != _lastThemeColorHex) {
-            _lastThemeColorHex = newColorHex;
-            AppTheme.initializeTheme(newColorHex);
-          }
-        }
+    final bundle = ServiceBundle(
+      authService: _authService,
+      chatService: _chatService,
+      presenceService: _presenceService,
+      mediaService: _mediaService,
+      dailyQuestionService: _dailyQuestionService,
+      themeController: _themeController,
+      localCache: widget.localCacheService,
+      prefs: widget.prefs,
+    );
 
+    return ListenableBuilder(
+      listenable: Listenable.merge([_authService, _themeController]),
+      builder: (context, _) {
         return MaterialApp(
           title: 'U&i',
           debugShowCheckedModeBanner: false,
-          theme: AppTheme.darkTheme,
+          theme: AppTheme.light(_themeController.palette),
+          darkTheme: AppTheme.dark(_themeController.palette),
+          themeMode: _themeController.mode,
           home: Builder(
             builder: (context) {
               if (_authService.loading) return const _SplashScreen();
               if (!_authService.isLoggedIn) {
-                return LoginScreen(authService: _authService);
-              }
-              if (!_authService.isEmailVerified &&
-                  _authService.isGracePeriodExpired) {
-                return VerifyEmailScreen(authService: _authService);
+                return AuthScreen(authService: _authService);
               }
               if (_authService.couple == null) {
-                return PairScreen(authService: _authService);
+                return OnboardingFlow(
+                  authService: _authService,
+                  dailyQuestionService: _dailyQuestionService,
+                  mediaService: _mediaService,
+                  prefs: widget.prefs,
+                );
               }
-              // Show permission setup on first launch
-              return ListenableBuilder(
-                listenable: _permissionService,
-                builder: (context, _) {
-                  if (!_permissionService.setupComplete) {
-                    return PermissionScreen(
-                      permissionService: _permissionService,
-                      backupService: _backupService,
-                      onComplete: () => setState(() {}),
-                    );
-                  }
-                  return HomeScreen(
-                    authService: _authService,
-                    chatService: _chatService,
-                    presenceService: _presenceService,
-                    mediaService: _mediaService,
-                    backupService: _backupService,
-                  );
-                },
-              );
+              return HomeShell(services: bundle);
             },
           ),
         );
@@ -203,72 +180,60 @@ class _UAndIState extends State<UAndI> {
   }
 }
 
+/// Paper splash with the app's single allowed gradient (docs/design/
+/// icon-splash.md, plan §4.3 rule 1). Wordmark in Fraunces; the spinner
+/// lives here only.
 class _SplashScreen extends StatelessWidget {
   const _SplashScreen();
 
   @override
   Widget build(BuildContext context) {
+    final t = AppTheme.tokensOf(context);
+    final palette = CouplePalette.fallback;
     return Scaffold(
       body: Container(
-        decoration: const BoxDecoration(gradient: AppTheme.surfaceGradient),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [t.base, Color.lerp(t.base, palette.seed, 0.02)!],
+          ),
+        ),
         child: Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TweenAnimationBuilder<double>(
-                tween: Tween(begin: 0.85, end: 1.0),
-                duration: const Duration(milliseconds: 1200),
-                curve: Curves.easeInOut,
-                builder: (context, value, child) =>
-                    Transform.scale(scale: value, child: child),
-                child: Container(
-                  width: 88,
-                  height: 88,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: AppTheme.primaryGradient,
-                    boxShadow: [
-                      BoxShadow(
-                        color: AppTheme.primary.withValues(alpha: 0.35),
-                        blurRadius: 40,
-                        spreadRadius: 8,
-                      ),
-                    ],
+          child: TweenAnimationBuilder<double>(
+            tween: Tween(begin: 0, end: 1),
+            duration: AppDurations.slow,
+            curve: AppMotion.emphasized,
+            builder: (context, value, child) => Opacity(
+              opacity: value,
+              child: Transform.translate(
+                offset: Offset(0, 8 * (1 - value)),
+                child: child,
+              ),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text('U&i', style: Theme.of(context).textTheme.displayLarge),
+                const SizedBox(height: AppSpacing.sm),
+                Text(
+                  'Your private space together',
+                  style: Theme.of(context)
+                      .textTheme
+                      .bodyMedium
+                      ?.copyWith(color: t.onSurfaceVariant),
+                ),
+                const SizedBox(height: AppSpacing.xxl),
+                SizedBox(
+                  width: 22,
+                  height: 22,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2.5,
+                    color: palette.accent.withValues(alpha: 0.6),
                   ),
-                  child: const Icon(Icons.favorite_rounded,
-                      size: 44, color: Colors.white),
                 ),
-              ),
-              const SizedBox(height: 28),
-              ShaderMask(
-                shaderCallback: (bounds) =>
-                    AppTheme.primaryGradient.createShader(bounds),
-                child: Text(
-                  'U&i',
-                  style: Theme.of(context).textTheme.displayLarge?.copyWith(
-                        fontWeight: FontWeight.w800,
-                        color: Colors.white,
-                        letterSpacing: -1,
-                      ),
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Your private space together',
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: AppTheme.onSurfaceVariant,
-                    ),
-              ),
-              const SizedBox(height: 40),
-              SizedBox(
-                width: 24,
-                height: 24,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2.5,
-                  color: AppTheme.primary.withValues(alpha: 0.6),
-                ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -276,7 +241,7 @@ class _SplashScreen extends StatelessWidget {
   }
 }
 
-/// Shown when Supabase or critical init fails
+/// Shown when Supabase or critical init fails.
 class _ErrorApp extends StatelessWidget {
   final String message;
   const _ErrorApp({required this.message});
@@ -285,23 +250,31 @@ class _ErrorApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      theme: AppTheme.darkTheme,
+      theme: AppTheme.light(CouplePalette.fallback),
       home: Scaffold(
-        body: Container(
-          decoration: const BoxDecoration(gradient: AppTheme.surfaceGradient),
-          child: Center(
-            child: Padding(
-              padding: const EdgeInsets.all(32),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.cloud_off_rounded, size: 64, color: AppTheme.error.withValues(alpha: 0.7)),
-                  const SizedBox(height: 24),
-                  Text('Connection Error', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: AppTheme.onSurface)),
-                  const SizedBox(height: 12),
-                  Text(message, textAlign: TextAlign.center, style: TextStyle(fontSize: 14, color: AppTheme.onSurfaceVariant)),
-                ],
-              ),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(AppSpacing.xl),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.cloud_off_rounded,
+                    size: 56, color: AppTheme.tokensOf(context).error),
+                const SizedBox(height: AppSpacing.lg),
+                Text('Connection Error',
+                    style: Theme.of(context).textTheme.headlineMedium),
+                const SizedBox(height: AppSpacing.sm),
+                Text(message,
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.bodyMedium),
+                const SizedBox(height: AppSpacing.lg),
+                AppButton(
+                  label: 'Try again',
+                  variant: AppButtonVariant.secondary,
+                  onPressed: () => showAppToast(
+                      context, 'Restart the app to try connecting again.'),
+                ),
+              ],
             ),
           ),
         ),

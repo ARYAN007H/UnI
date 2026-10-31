@@ -11,12 +11,15 @@ import '../models/models.dart';
 class LocalCacheService extends ChangeNotifier {
   static Database? _db;
   static const _dbName = 'uni_cache.db';
-  static const _dbVersion = 1;
+  static const _dbVersion = 2;
 
   /// Initialize the database.
-  Future<void> initialize() async {
+  ///
+  /// [directory] overrides the storage location (used by tests to avoid the
+  /// path_provider platform channel); defaults to the app documents dir.
+  Future<void> initialize({String? directory}) async {
     if (_db != null) return;
-    
+
     if (kIsWeb) {
       databaseFactory = databaseFactoryFfiWeb;
       _db = await openDatabase(
@@ -29,8 +32,8 @@ class LocalCacheService extends ChangeNotifier {
       return;
     }
 
-    final dir = await getApplicationDocumentsDirectory();
-    final path = p.join(dir.path, _dbName);
+    final dir = directory ?? (await getApplicationDocumentsDirectory()).path;
+    final path = p.join(dir, _dbName);
 
     _db = await openDatabase(
       path,
@@ -104,11 +107,52 @@ class LocalCacheService extends ChangeNotifier {
     await db.execute(
         'CREATE INDEX IF NOT EXISTS idx_channels_couple ON channels(couple_id)');
 
+    await _createV2Tables(db);
+
     debugPrint('[LocalCache] Tables created');
   }
 
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
-    // Future migrations go here
+    if (oldVersion < 2) {
+      await _createV2Tables(db);
+    }
+  }
+
+  /// v2 tables: offline outbox (§7.1) + daily question ritual (§7.4).
+  Future<void> _createV2Tables(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS outbox (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        op TEXT NOT NULL,
+        payload TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        attempts INTEGER DEFAULT 0,
+        last_error TEXT
+      )
+    ''');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_outbox_created ON outbox(created_at)');
+
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS daily_questions (
+        id INTEGER PRIMARY KEY,
+        text TEXT NOT NULL,
+        category TEXT DEFAULT 'general',
+        emoji TEXT DEFAULT '💭'
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS daily_answers (
+        couple_id TEXT NOT NULL,
+        question_id INTEGER NOT NULL,
+        answer_date TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        content TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (couple_id, question_id, answer_date, user_id)
+      )
+    ''');
   }
 
   Database get db {
@@ -356,6 +400,141 @@ class LocalCacheService extends ChangeNotifier {
     );
   }
 
+  // ── Outbox (§7.1 — offline writes for non-message ops) ──
+  // Messages use the messages.is_synced mechanism; this queue covers
+  // message.edit / message.delete / read.mark / channel.create.
+
+  Future<void> enqueueOutbox(String op, Map<String, dynamic> payload) async {
+    await db.insert('outbox', {
+      'op': op,
+      'payload': jsonEncode(payload),
+      'created_at': DateTime.now().toIso8601String(),
+      'attempts': 0,
+    });
+  }
+
+  Future<List<Map<String, dynamic>>> getPendingOutbox() async {
+    return db.query('outbox', orderBy: 'created_at ASC');
+  }
+
+  Future<void> deleteOutboxEntry(int id) async {
+    await db.delete('outbox', where: 'id = ?', whereArgs: [id]);
+  }
+
+  Future<void> bumpOutboxAttempt(int id, String error) async {
+    await db.rawUpdate(
+      'UPDATE outbox SET attempts = attempts + 1, last_error = ? WHERE id = ?',
+      [error, id],
+    );
+  }
+
+  Future<int> get outboxCount async {
+    final result = await db.rawQuery('SELECT COUNT(*) as count FROM outbox');
+    return Sqflite.firstIntValue(result) ?? 0;
+  }
+
+  // ── Daily Question Ritual (§7.4) ─────────────────────────
+
+  /// Replace the cached question bank (server seed or built-in fallback).
+  Future<void> saveDailyQuestions(List<Map<String, dynamic>> questions) async {
+    final batch = db.batch();
+    await db.delete('daily_questions');
+    for (final q in questions) {
+      batch.insert('daily_questions', {
+        'id': q['id'] as int,
+        'text': q['text'] as String,
+        'category': q['category'] as String? ?? 'general',
+        'emoji': q['emoji'] as String? ?? '💭',
+      });
+    }
+    await batch.commit(noResult: true);
+  }
+
+  /// Cached question bank ordered by id — the derivation is an index into
+  /// this exact ordering, so it must match the server's ORDER BY id.
+  Future<List<Map<String, dynamic>>> getDailyQuestions() async {
+    final rows = await db.query('daily_questions', orderBy: 'id ASC');
+    return rows
+        .map((r) => {
+              'id': r['id'] as int,
+              'text': r['text'] as String,
+              'category': r['category'] as String? ?? 'general',
+              'emoji': r['emoji'] as String? ?? '💭',
+            })
+        .toList();
+  }
+
+  Future<void> saveDailyAnswer({
+    required String coupleId,
+    required int questionId,
+    required String answerDate,
+    required String userId,
+    required String content,
+  }) async {
+    await db.insert(
+      'daily_answers',
+      {
+        'couple_id': coupleId,
+        'question_id': questionId,
+        'answer_date': answerDate,
+        'user_id': userId,
+        'content': content,
+        'updated_at': DateTime.now().toIso8601String(),
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  /// All answers for a question on a date, keyed by user id.
+  Future<Map<String, String>> getDailyAnswers({
+    required String coupleId,
+    required int questionId,
+    required String answerDate,
+  }) async {
+    final rows = await db.query(
+      'daily_answers',
+      where: 'couple_id = ? AND question_id = ? AND answer_date = ?',
+      whereArgs: [coupleId, questionId, answerDate],
+    );
+    return {
+      for (final r in rows) r['user_id'] as String: r['content'] as String,
+    };
+  }
+
+  // ── Export accessors (ExportService, Phase 3 pulled early) ──
+
+  /// Every cached media reference with its local file path (when present).
+  Future<List<Map<String, dynamic>>> listCachedMedia() async {
+    if (kIsWeb) return [];
+    final rows = await db.query('media_cache', orderBy: 'downloaded_at ASC');
+    return rows
+        .map((r) => {
+              'media_url': r['media_url'] as String,
+              'local_path': r['local_path'] as String?,
+              'size_bytes': r['size_bytes'] as int?,
+            })
+        .toList();
+  }
+
+  /// All daily answers for a couple (export manifest data).
+  Future<List<Map<String, dynamic>>> getAllDailyAnswers(
+      String coupleId) async {
+    final rows = await db.query(
+      'daily_answers',
+      where: 'couple_id = ?',
+      whereArgs: [coupleId],
+      orderBy: 'answer_date ASC, question_id ASC',
+    );
+    return rows
+        .map((r) => {
+              'question_id': r['question_id'] as int,
+              'answer_date': r['answer_date'] as String,
+              'user_id': r['user_id'] as String,
+              'content': r['content'] as String,
+            })
+        .toList();
+  }
+
   // ── Database Management ──────────────────────────────────
 
   /// Get the database file path (for backup).
@@ -371,6 +550,9 @@ class LocalCacheService extends ChangeNotifier {
     await db.delete('channels');
     await db.delete('media_cache');
     await db.delete('sync_state');
+    await db.delete('outbox');
+    await db.delete('daily_questions');
+    await db.delete('daily_answers');
     debugPrint('[LocalCache] All data cleared');
   }
 

@@ -225,12 +225,12 @@ class BackupService extends ChangeNotifier {
       // Close current DB and replace
       await _cacheService!.close();
 
-      final dbPath = await _cacheService!.getDatabasePath();
+      final dbPath = await _cacheService.getDatabasePath();
       final dbFile = File(dbPath);
       await dbFile.writeAsBytes(dlResp.bodyBytes);
 
       // Reinitialize
-      await _cacheService!.initialize();
+      await _cacheService.initialize();
 
       // Save the file ID for future updates
       final prefs = await SharedPreferences.getInstance();

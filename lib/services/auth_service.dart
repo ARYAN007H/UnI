@@ -8,6 +8,37 @@ import '../models/models.dart';
 class AuthService extends ChangeNotifier {
   final SupabaseClient _client = Supabase.instance.client;
 
+  // ── Deep-link pairing (agent3 request) ─────────────────────
+
+  /// Extract an invite code from a pairing deep link.
+  ///
+  /// Accepted forms (case-insensitive host/path handling):
+  ///  - custom scheme:  uandi://pair?code=ABC123
+  ///  - web link:       https://uandi.app/pair?code=ABC123  (or any host)
+  ///  - path code:      https://uandi.app/pair/ABC123
+  ///
+  /// Returns null when the URI is not a pairing link or has no code.
+  static String? extractPairCode(Uri uri) {
+    final isPairLink = uri.scheme == 'uandi' ||
+        (uri.pathSegments.isNotEmpty &&
+            uri.pathSegments.first.toLowerCase() == 'pair');
+    if (!isPairLink) return null;
+
+    final queryCode = uri.queryParameters['code'] ??
+        uri.queryParameters['invite_code'];
+    if (queryCode != null && queryCode.trim().isNotEmpty) {
+      return queryCode.trim().toUpperCase();
+    }
+
+    // /pair/<code> form — 'pair' itself is not the code
+    for (final segment in uri.pathSegments) {
+      if (segment.toLowerCase() == 'pair') continue;
+      if (segment.trim().isNotEmpty) return segment.trim().toUpperCase();
+    }
+    return null;
+  }
+
+
   User? get currentUser => _client.auth.currentUser;
   bool get isLoggedIn => currentUser != null;
 

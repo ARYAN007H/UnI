@@ -1,0 +1,29 @@
+# COUNCIL MEMBER #6 — Gen Z Consumer (20 y/o)
+
+## VERDICTS
+
+1. **Widget-first acquisition — SUPPORT.** Widgets are the only couple-app surface my generation actually keeps installed: Locket hit #1 US App Store off the [TikTok couples trend](https://www.tiktok.com/discover/locket-widget-for-couples); Widgetable has 50M+ Play downloads, 4.7★ from ~577K reviews, virality driven by the Distance/pet widgets; noteit spawned a whole clone economy in 2022.
+2. **Daily questions + streaks — MIXED.** Questions yes, streak-guilt no. "Quizzes are a lot of fun" works for r/Marriage's 25+ crowd; for us, streaks are documented anxiety mechanics ([MDPI 2020](https://www.mdpi.com/1660-4601/17/16/5740), [streak pressure peaks grades 7–9](https://screenwiseapp.com/guides/snapchat-streaks-and-artificial-urgency)). We aged out of finding that cute.
+3. **Monthly Wrapped recap — REFUTE as monthly.** Wrapped works at 1x/year ([40% engagement lift, 2M X shares](https://www.sprinklr.com/blog/spotify-social-listening)); monthly is a chore. Worse: a "no feed, no clout" app has nowhere to share cards, killing the exact loop that makes Wrapped viral.
+4. **LDR wedge — SUPPORT. Strongest point.** [34.2% of romantically involved college students are in LDRs](https://pubmed.ncbi.nlm.nih.gov/34591746); ~75% lifetime. r/LongDistance is the only subreddit where couple apps get recommended unprompted.
+5. **Privacy-first anti-Instagram brand — MIXED.** Privacy as *product* (intimacy, no audience) is why Locket won; privacy as *marketing* is noise: [88% of Gen Z share data anyway](https://www.linkedin.com/pulse/privacy-paradox-why-gen-z-gives-away-more-trusts-less-g-figueira-gwwdf), and [Gen Z cares least about privacy of any generation](https://cybernews.com/resources/who-cares-about-online-privacy-statistics/). Ship the feeling, skip the manifesto.
+6. **AI memory layer — REFUTE as a branded feature.** "AI slop" is a word-of-the-year contender; Sora backlash is literally ["giving them the ick"](https://www.nytimes.com/2025/10/24/podcasts/hardfork-sora-amazon-atlas.html). Invisible AI (auto-dating photos, quiet search) is fine; an "AI" tab gets you deleted.
+7. **Freemium + couple license — MIXED.** One sub covering both partners is the accepted standard ([Paired ~$9.99/mo/couple](https://panoramicposts.com/paired-app-review)); but Widgetable's top review complaint is monetization itself — ["irritating! You have to earn items with ads… basically convincing you into Pro!"](https://play.google.com/store/apps/details?id=com.widgetable.theme.android&hl=en_US). Two broke college kids, one price, zero ads, or we bounce.
+8. **Native store apps — SUPPORT.** Every app in the evidence is native; widgets, lock screen presence and push are impossible web-only. Point 8 is a dependency of point 1.
+
+## KEY EVIDENCE
+
+- BeReal cautionary tale: 15M DAU peak (Oct 2022) → [-61% to <6M DAU by Mar 2023](https://www.theverge.com/2023/4/26/23698859/bereal-losing-interest-missed-opportunity); only [9% of Android installs opened daily vs 39% Instagram](https://www.marketingcharts.com/industries/media-and-entertainment-211636); sold to Voodoo for ~€500M (~$540M) June 2024 against a claimed ambiguous "40M active users." Daily-prompt apps decay hard; novelty-based engagement is a loan, not a moat.
+- The cringe line is real and age-coded: the best review a couple app can get is ["not too cringe like many other couple apps"](https://www.reddit.com/r/iosapps/comments/1wpmw81/i_redesigned_my_couples_app_for_20_couple_quizzes) — "couple app" is a category we pre-mock. Genuine adopters skew LDR or 25+ ([Cozy Couples endorsement](https://www.reddit.com/r/LDRJourney/comments/1sk2xrc/ldr_couples_app_idea), [r/Marriage on Paired](https://www.reddit.com/r/Marriage/comments/1kesc9d/best_apps_trying_to_connect_emotionally_and)).
+- Core skeptic objection exists and is loud: "why not just text" — the exact roast a chat-first couple app gets on [r/roastmystartup](https://www.reddit.com/r/roastmystartup/comments/1qyp26y/a_chatbased_app_for_couples) and [r/indianstartups](https://www.reddit.com/r/indianstartups/comments/1s7hio7/would_you_use_an_app_where_you_can_only_talk_to_one).
+- Widget adoption is not hypothetical: [Widgetable Play listing](https://play.google.com/store/apps/details?id=com.widgetable.theme.android&hl=en_US) (50M+, 4.7★), [noteit in r/LongDistance](https://www.reddit.com/r/LongDistance/comments/tvt5py/for_those_in_long_distance_relationships_or_if), [Locket reviews framing it as the intimate Instagram alternative](https://www.whistleout.com/CellPhones/Apps/locket-widget-photo-sharing-app).
+
+## MY RECOMMENDATIONS
+
+1. **Ship as a widget company with a chat app attached, not the reverse.** Distance widget + partner photo/mood widget on the lock screen IS the product for under-22s; the Discord channels are the utility behind it. Web-first = invisible. Native widget MVP now.
+2. **Lead every message with LDR.** "Built for when you can't hug them" is the only claim that makes a couple app installable without embarrassment — it's a need, not a gimmick. 1 in 3 college relationships qualifies.
+3. **One annual recap, no streak counter.** Questions unlocked freely, streak shown as a soft count never a punishment; annual (not monthly) Wrapped that exports to camera roll.
+
+## BIGGEST RISK
+
+**A chat-first, daily-open app for exactly 2 people is redundant with iMessage + Snapchat + Find My — and the demo knows it.** BeReal's collapse (15M→<6M DAU in 5 months) proves daily-prompt loyalty evaporates; without the widget/LDR hooks carrying retention, U&i is a second texting app with extra steps, and "why not just text" is the first comment on every couple-app thread found ([r/roastmystartup](https://www.reddit.com/r/roastmystartup/comments/1qyp26y/a_chatbased_app_for_couples), [r/Marriage](https://www.reddit.com/r/Marriage/comments/1fyhub5/couples_apps)). If the widget isn't the hero, my friends' answer is: never downloaded.

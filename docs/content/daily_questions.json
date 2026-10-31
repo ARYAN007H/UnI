@@ -1,0 +1,20 @@
+{
+  "_comment": [
+    "Daily question bank (§7.4 of docs/revival-plan.md).",
+    "PLACEHOLDER SET (10) — matches DailyQuestionService._fallbackBank so derivation stays consistent before seeding.",
+    "Agent 3 (or the human) should expand this to 365 prompts in ONE batch: categories ldr / playful / deep / memory.",
+    "Seeding: when the final bank lands, generate supabase/seed_daily_questions.sql (INSERT ... ON CONFLICT DO NOTHING) from this file and run it once in the Supabase SQL editor. Rows are read-only to clients; the app derives question-of-the-day as an index into ORDER BY id."
+  ],
+  "questions": [
+    { "id": 1, "text": "What's a small thing they did today that made you smile?", "category": "playful", "emoji": "😊" },
+    { "id": 2, "text": "If you could teleport to them for one hour, what would you do?", "category": "ldr", "emoji": "✈️" },
+    { "id": 3, "text": "What's a song that reminds you of them right now?", "category": "playful", "emoji": "🎵" },
+    { "id": 4, "text": "What is something you are looking forward to doing together?", "category": "ldr", "emoji": "🗓️" },
+    { "id": 5, "text": "What's one thing you learned about yourself this week?", "category": "deep", "emoji": "🌱" },
+    { "id": 6, "text": "Describe your perfect lazy day together.", "category": "playful", "emoji": "🛋️" },
+    { "id": 7, "text": "What is a memory of us you replay the most?", "category": "memory", "emoji": "📸" },
+    { "id": 8, "text": "What's something you want to tell them but keep forgetting to?", "category": "deep", "emoji": "💌" },
+    { "id": 9, "text": "Which timezone moment is hardest: waking up alone or falling asleep alone?", "category": "ldr", "emoji": "🌙" },
+    { "id": 10, "text": "What's a dish you want to cook for them someday?", "category": "playful", "emoji": "🍝" }
+  ]
+}

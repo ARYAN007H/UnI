@@ -5,7 +5,7 @@ import '../models/models.dart';
 /// Loaded from .env file.
 class SupabaseConfig {
   static String get url => dotenv.env['SUPABASE_URL'] ?? '';
-  static String get anonKey => dotenv.env['SUPABASE_ANON_KEY'] ?? '';
+  static String get publishableKey => dotenv.env['SUPABASE_ANON_KEY'] ?? '';
 
   /// Default channels seeded for every new couple
   static const List<Map<String, String>> defaultChannels = [

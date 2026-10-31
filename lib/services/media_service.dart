@@ -8,6 +8,9 @@ import 'package:uuid/uuid.dart';
 import 'package:http/http.dart' as http;
 import 'package:exif/exif.dart';
 import 'local_cache_service.dart';
+import 'crypto_service.dart';
+import 'media/blurhash.dart';
+import 'media/exif_strip.dart';
 
 /// A simple class to hold extracted GPS coordinates
 class LocationData {
@@ -16,14 +19,48 @@ class LocationData {
   const LocationData(this.latitude, this.longitude);
 }
 
-/// Handles media picking, compression, upload/download for couple media.
+/// Handles media picking, privacy prep (EXIF strip + BlurHash), upload and
+/// download for couple media.
+///
+/// §7.2 pipeline: an Edge Function (`media-url`) mints presigned URLs and the
+/// device uploads **directly to a private R2 bucket** — bytes never pass
+/// through Supabase and nothing is publicly fetchable. Images additionally
+/// get their EXIF stripped client-side (GPS extracted first, for the globe)
+/// and a BlurHash stored in the message's thumbnail field so the partner's
+/// UI renders an instant placeholder.
+///
+/// Until the Edge Function + R2 are configured (Phase 3), uploads fall back
+/// to the legacy Supabase Storage path so the app stays functional.
 class MediaService extends ChangeNotifier {
   final SupabaseClient _client = Supabase.instance.client;
-  final LocalCacheService? _cache;
+  LocalCacheService? _cache;
+  bool _ownsCache = false;
   static const _uuid = Uuid();
   static const String _bucket = 'couple-media';
 
-  MediaService({LocalCacheService? cache}) : _cache = cache;
+  /// §7.5: when a couple key is available, uploaded blobs are AES-GCM
+  /// encrypted client-side ('UIE1' magic) and downloads are decrypted
+  /// before caching. Nullable so tests and pre-pairing runs pass through.
+  CryptoService? _crypto;
+  CryptoService get crypto => _crypto ??= CryptoService();
+
+  MediaService({LocalCacheService? cache, CryptoService? crypto})
+      : _cache = cache,
+        _crypto = crypto;
+
+  /// The cache is mandatory (§7.1): self-heal if the caller didn't inject one.
+  Future<LocalCacheService?> _ensureCache() async {
+    if (_cache != null) return _cache;
+    final own = LocalCacheService();
+    try {
+      await own.initialize();
+      _cache = own;
+      _ownsCache = true;
+    } catch (e) {
+      debugPrint('[MediaService] self-healed cache init failed: $e');
+    }
+    return _cache;
+  }
 
   // Upload progress tracking
   double _uploadProgress = 0.0;
@@ -33,21 +70,22 @@ class MediaService extends ChangeNotifier {
 
   // ── Image Picking ──────────────────────────────────────────
 
-  /// Pick an image from the gallery.
+  /// Pick an image. Defaults to UNCOMPRESSED so EXIF/GPS extraction still
+  /// works; [stripJpegExif] removes EXIF before upload (privacy), so the
+  /// original size is temporary and never leaves the device uncompressed.
+  ///
+  /// [maxWidth]/[maxHeight]/[quality] are accepted for v1 call-site
+  /// compatibility and deliberately IGNORED: picker-side compression strips
+  /// EXIF before we can read the GPS for the globe.
   Future<XFile?> pickImage({
     ImageSource source = ImageSource.gallery,
-    int maxWidth = 1920,
-    int maxHeight = 1920,
-    int quality = 85,
+    int? maxWidth,
+    int? maxHeight,
+    int? quality,
   }) async {
     try {
       final picker = ImagePicker();
-      return await picker.pickImage(
-        source: source,
-        maxWidth: maxWidth.toDouble(),
-        maxHeight: maxHeight.toDouble(),
-        imageQuality: quality,
-      );
+      return await picker.pickImage(source: source);
     } catch (e) {
       debugPrint('Error picking image: $e');
       return null;
@@ -71,30 +109,29 @@ class MediaService extends ChangeNotifier {
     }
   }
 
-  /// Pick multiple images from the gallery.
+  /// Pick multiple images (uncompressed, see [pickImage]; size params
+  /// accepted for v1 compatibility and ignored). Note: image_picker's
+  /// pickMultiImage takes no source parameter.
   Future<List<XFile>> pickMultipleImages({
-    int maxWidth = 1920,
-    int maxHeight = 1920,
-    int quality = 85,
+    int? maxWidth,
+    int? maxHeight,
+    int? quality,
   }) async {
     try {
       final picker = ImagePicker();
-      return await picker.pickMultiImage(
-        maxWidth: maxWidth.toDouble(),
-        maxHeight: maxHeight.toDouble(),
-        imageQuality: quality,
-      );
+      return await picker.pickMultiImage();
     } catch (e) {
-      debugPrint('Error picking multiple images: $e');
+      debugPrint('Error picking images: $e');
       return [];
     }
   }
 
   // ── Upload ─────────────────────────────────────────────────
 
-  /// Upload a file to Supabase Storage.
-  /// Returns the public/signed URL of the uploaded file.
-  /// Path structure: couple-media/{coupleId}/{type}/{uuid}.{ext}
+  /// Upload a file through the §7.2 pipeline.
+  ///
+  /// Returns a result whose [MediaUploadResult.url] is the private-bucket
+  /// OBJECT PATH (never a public URL) plus the image BlurHash when usable.
   Future<MediaUploadResult?> uploadFile({
     required String coupleId,
     required XFile file,
@@ -108,40 +145,84 @@ class MediaService extends ChangeNotifier {
       final ext = p.extension(file.path).toLowerCase().replaceAll('.', '');
       final fileName = '${_uuid.v4()}.$ext';
       final storagePath = '$coupleId/${type.folder}/$fileName';
-
-      // Read file bytes
-      final bytes = await file.readAsBytes();
-      final fileSize = bytes.length;
-
-      // Determine MIME type
       final mimeType = _getMimeType(ext, type);
 
-      // Upload to Supabase Storage
-      await _client.storage.from(_bucket).uploadBinary(
-            storagePath,
-            bytes,
-            fileOptions: FileOptions(
-              contentType: mimeType,
-              upsert: true,
-            ),
-          );
+      Uint8List? bytes; // only loaded when needed (web / images / voice)
+      if (kIsWeb || type == MediaType.image) {
+        bytes = await file.readAsBytes();
+      }
+
+      // Privacy prep for images: GPS was extracted by the caller BEFORE
+      // this call (they need it for the globe); now strip EXIF and hash.
+      String? blurHash;
+      var uploadBytes = bytes;
+      if (type == MediaType.image && bytes != null) {
+        final stripped = stripJpegExif(bytes);
+        if (!identical(stripped, bytes)) {
+          debugPrint('[MediaService] EXIF stripped from image');
+        }
+        uploadBytes = stripped;
+        blurHash = await encodeBlurHash(stripped);
+      }
+
+      // §7.5: encrypt when the couple key is available. For streamed video
+      // this means buffering once (accepted tradeoff — encryption is the
+      // normal post-pairing state; pre-pairing runs stream as before).
+      final uid = crypto.currentUserId;
+      if (uploadBytes == null && uid != null) {
+        final willEncrypt = await crypto.hasCoupleKey(coupleId, uid);
+        if (willEncrypt) {
+          uploadBytes = await file.readAsBytes();
+        }
+      }
+      if (uploadBytes != null && uid != null) {
+        uploadBytes = await crypto.protectMedia(
+          uploadBytes,
+          coupleId: coupleId,
+          myUserId: uid,
+        );
+      }
+
+      MediaUploadResult? result;
+      try {
+        result = await _presignedUpload(
+          storagePath: storagePath,
+          mimeType: mimeType,
+          file: file,
+          bytes: uploadBytes,
+          progressFrom: 0.0,
+          progressTo: 1.0,
+        );
+        result = MediaUploadResult(
+          url: result.url,
+          storagePath: result.storagePath,
+          fileName: result.fileName,
+          mimeType: result.mimeType,
+          sizeBytes: result.sizeBytes,
+          blurHash: blurHash,
+        );
+      } catch (e) {
+        debugPrint('[MediaService] presigned path unavailable, legacy fallback: $e');
+        result = await _legacyUpload(
+          storagePath: storagePath,
+          mimeType: mimeType,
+          file: file,
+          bytes: uploadBytes,
+        );
+        result = MediaUploadResult(
+          url: result.url,
+          storagePath: result.storagePath,
+          fileName: result.fileName,
+          mimeType: result.mimeType,
+          sizeBytes: result.sizeBytes,
+          blurHash: blurHash,
+        );
+      }
 
       _uploadProgress = 1.0;
-      notifyListeners();
-
-      // Get the URL
-      final url = _client.storage.from(_bucket).getPublicUrl(storagePath);
-
       _isUploading = false;
       notifyListeners();
-
-      return MediaUploadResult(
-        url: url,
-        storagePath: storagePath,
-        fileName: fileName,
-        mimeType: mimeType,
-        sizeBytes: fileSize,
-      );
+      return result;
     } catch (e) {
       _isUploading = false;
       _uploadProgress = 0.0;
@@ -151,7 +232,7 @@ class MediaService extends ChangeNotifier {
     }
   }
 
-  /// Upload raw bytes (for voice recordings).
+  /// Upload raw bytes (voice recordings) through the same pipeline.
   Future<MediaUploadResult?> uploadBytes({
     required String coupleId,
     required Uint8List bytes,
@@ -167,28 +248,24 @@ class MediaService extends ChangeNotifier {
       final storagePath = '$coupleId/${type.folder}/$fileName';
       final mimeType = _getMimeType(extension, type);
 
-      await _client.storage.from(_bucket).uploadBinary(
-            storagePath,
-            bytes,
-            fileOptions: FileOptions(
-              contentType: mimeType,
-              upsert: true,
-            ),
-          );
-
-      _uploadProgress = 1.0;
-      final url = _client.storage.from(_bucket).getPublicUrl(storagePath);
+      final result = await _presignedUpload(
+        storagePath: storagePath,
+        mimeType: mimeType,
+        bytes: bytes,
+        progressFrom: 0.0,
+        progressTo: 1.0,
+      ).catchError((_) async {
+        debugPrint('[MediaService] presigned path unavailable, legacy fallback');
+        return _legacyUpload(
+          storagePath: storagePath,
+          mimeType: mimeType,
+          bytes: bytes,
+        );
+      });
 
       _isUploading = false;
       notifyListeners();
-
-      return MediaUploadResult(
-        url: url,
-        storagePath: storagePath,
-        fileName: fileName,
-        mimeType: mimeType,
-        sizeBytes: bytes.length,
-      );
+      return result;
     } catch (e) {
       _isUploading = false;
       _uploadProgress = 0.0;
@@ -198,23 +275,123 @@ class MediaService extends ChangeNotifier {
     }
   }
 
+  /// Ask the `media-url` Edge Function for a presigned PUT and upload
+  /// directly to R2. Native uses a streamed request so large files never
+  /// sit fully in RAM; web always has bytes.
+  Future<MediaUploadResult> _presignedUpload({
+    required String storagePath,
+    required String mimeType,
+    XFile? file,
+    Uint8List? bytes,
+    required double progressFrom,
+    required double progressTo,
+  }) async {
+    final fnResponse = await _client.functions.invoke(
+      'media-url',
+      body: {
+        'action': 'upload',
+        'path': storagePath,
+        'contentType': mimeType,
+      },
+    );
+    final data = fnResponse.data as Map<dynamic, dynamic>;
+    final uploadUrl = data['uploadUrl'] as String?;
+    if (uploadUrl == null) {
+      throw StateError('media-url returned no uploadUrl');
+    }
+
+    final uri = Uri.parse(uploadUrl);
+    http.BaseResponse response;
+
+    if (bytes != null) {
+      // Images (EXIF-stripped bytes — the disk file is NOT what we upload),
+      // voice notes, and web: bytes are already in memory.
+      response = await http.put(
+        uri,
+        headers: {'Content-Type': mimeType},
+        body: bytes,
+      );
+      _uploadProgress = progressTo;
+      notifyListeners();
+    } else if (file != null) {
+      // Native video-only path: stream from disk — no full-file RAM spike.
+      final length = await file.length();
+      final request = http.StreamedRequest('PUT', uri)
+        ..headers['Content-Type'] = mimeType
+        ..contentLength = length;
+
+      var sent = 0;
+      file.openRead().listen(
+            (chunk) {
+              sent += chunk.length;
+              _uploadProgress = progressFrom +
+                  (progressTo - progressFrom) * (sent / length);
+              notifyListeners();
+              request.sink.add(chunk);
+            },
+            onDone: request.sink.close,
+            onError: (Object e) => request.sink.close(),
+          );
+
+      response = await http.Response.fromStream(await request.send());
+    } else {
+      throw StateError('nothing to upload');
+    }
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw StateError('R2 upload failed: HTTP ${response.statusCode}');
+    }
+
+    return MediaUploadResult(
+      url: storagePath, // object PATH — resolved via signed URLs on read
+      storagePath: storagePath,
+      fileName: p.basename(storagePath),
+      mimeType: mimeType,
+      sizeBytes: bytes?.length ?? await file?.length() ?? 0,
+    );
+  }
+
+  /// Legacy v1 path (Supabase Storage) — kept as fallback until the R2
+  /// Edge Function is configured in Phase 3.
+  Future<MediaUploadResult> _legacyUpload({
+    required String storagePath,
+    required String mimeType,
+    XFile? file,
+    Uint8List? bytes,
+  }) async {
+    final data = bytes ?? await file!.readAsBytes();
+    await _client.storage.from(_bucket).uploadBinary(
+          storagePath,
+          data,
+          fileOptions: FileOptions(contentType: mimeType, upsert: true),
+        );
+    final url = _client.storage.from(_bucket).getPublicUrl(storagePath);
+    return MediaUploadResult(
+      url: url,
+      storagePath: storagePath,
+      fileName: p.basename(storagePath),
+      mimeType: mimeType,
+      sizeBytes: data.length,
+    );
+  }
+
   // ── Download ───────────────────────────────────────────────
 
-  /// Download a media file to local device storage.
-  /// Returns the local path if successful, null otherwise.
+  /// Resolve a media reference to a local file path (cached).
+  /// [mediaUrl] is either an object PATH (§7.2) or a legacy http(s) URL.
   Future<String?> downloadMedia(String mediaUrl) async {
     if (kIsWeb) return null;
     try {
-      if (_cache != null) {
-        final cachedPath = await _cache.getMediaLocalPath(mediaUrl);
-        if (cachedPath != null && await File(cachedPath).exists()) {
-          return cachedPath;
-        }
+      final cache = await _ensureCache();
+      final cachedPath = await cache?.getMediaLocalPath(mediaUrl);
+      if (cachedPath != null && await File(cachedPath).exists()) {
+        return cachedPath;
       }
 
       final dir = await getApplicationDocumentsDirectory();
-      final uri = Uri.parse(mediaUrl);
-      final fileName = uri.pathSegments.last;
+      final fileName = mediaUrl.contains('/')
+          ? Uri.parse(mediaUrl).pathSegments.last
+          : mediaUrl;
       final localPath = p.join(dir.path, 'media', fileName);
 
       final file = File(localPath);
@@ -222,14 +399,41 @@ class MediaService extends ChangeNotifier {
         await file.parent.create(recursive: true);
       }
 
-      final response = await http.get(uri);
+      http.Response response;
+      if (mediaUrl.startsWith('http')) {
+        response = await http.get(Uri.parse(mediaUrl));
+      } else {
+        // §7.2: private R2 object — mint a short-lived signed GET.
+        final signed = await _client.functions.invoke(
+          'media-url',
+          body: {'action': 'download', 'path': mediaUrl},
+        );
+        final url = (signed.data as Map<dynamic, dynamic>)['downloadUrl'] as String?;
+        if (url == null) throw StateError('media-url returned no downloadUrl');
+        response = await http.get(Uri.parse(url));
+      }
+
       if (response.statusCode == 200) {
-        await file.writeAsBytes(response.bodyBytes);
-        // Save to cache
-        await _cache?.cacheMediaPath(
+        var blob = response.bodyBytes;
+
+        // §7.5: decrypt before caching. No magic (legacy) → passthrough.
+        // Encrypted but no local key → cache the encrypted bytes anyway
+        // (chat never breaks; UI shows the BlurHash + "restore access").
+        try {
+          blob = await crypto.unprotectMedia(
+            blob,
+            coupleId: coupleIdOfPath(mediaUrl),
+            myUserId: crypto.currentUserId ?? '',
+          );
+        } on MediaKeyMissingException catch (e) {
+          debugPrint('[MediaService] key missing, caching encrypted: $e');
+        }
+
+        await file.writeAsBytes(blob);
+        await cache?.cacheMediaPath(
           mediaUrl,
           localPath,
-          sizeBytes: response.bodyBytes.length,
+          sizeBytes: blob.length,
         );
         return localPath;
       }
@@ -240,9 +444,18 @@ class MediaService extends ChangeNotifier {
     }
   }
 
+  /// The first path segment of an object path is the coupleId (§7.2 layout).
+  /// Legacy http URLs have no couple segment — returns the URL itself so the
+  /// crypto layer's key lookup simply misses and passes through.
+  static String coupleIdOfPath(String mediaUrl) {
+    if (mediaUrl.startsWith('http')) return mediaUrl;
+    return mediaUrl.split('/').first;
+  }
+
   // ── Delete ─────────────────────────────────────────────────
 
-  /// Delete a file from storage.
+  /// Delete a file from storage (legacy bucket; R2 cleanup is handled by
+  /// the lifecycle rules on the bucket itself).
   Future<bool> deleteFile(String storagePath) async {
     try {
       await _client.storage.from(_bucket).remove([storagePath]);
@@ -256,6 +469,7 @@ class MediaService extends ChangeNotifier {
   // ── EXIF Data Extraction ───────────────────────────────────
 
   /// Extracts latitude and longitude from image bytes using the exif package.
+  /// MUST be called before upload — the uploader strips EXIF (privacy).
   Future<LocationData?> extractLocationFromImage(XFile file) async {
     try {
       final bytes = await file.readAsBytes();
@@ -265,7 +479,6 @@ class MediaService extends ChangeNotifier {
           data.containsKey('GPS GPSLongitude') &&
           data.containsKey('GPS GPSLatitudeRef') &&
           data.containsKey('GPS GPSLongitudeRef')) {
-        
         final latValues = data['GPS GPSLatitude']!.values.toList();
         final lonValues = data['GPS GPSLongitude']!.values.toList();
         final latRef = data['GPS GPSLatitudeRef']!.printable;
@@ -273,7 +486,7 @@ class MediaService extends ChangeNotifier {
 
         double convertToDecimal(List<dynamic> values, String ref) {
           if (values.length < 3) return 0.0;
-          
+
           double degrees = _evalRatio(values[0]);
           double minutes = _evalRatio(values[1]);
           double seconds = _evalRatio(values[2]);
@@ -306,12 +519,12 @@ class MediaService extends ChangeNotifier {
       return val.toDouble();
     }
     if (val is double) {
-      return val;
+      return val.toDouble();
     }
     return 0.0;
   }
 
-  // ── Helpers ────────────────────────────────────────────────
+  // ── Helpers ──────────────────────────────────────────────
 
   String _getMimeType(String ext, MediaType type) {
     switch (ext) {
@@ -341,7 +554,7 @@ class MediaService extends ChangeNotifier {
     }
   }
 
-  /// Get signed URL for private bucket access.
+  /// Get signed URL for private bucket access (legacy fallback path).
   Future<String?> getSignedUrl(String storagePath, {int expiresIn = 3600}) async {
     try {
       final url = await _client.storage
@@ -352,6 +565,14 @@ class MediaService extends ChangeNotifier {
       debugPrint('Error getting signed URL: $e');
       return null;
     }
+  }
+
+  @override
+  void dispose() {
+    if (_ownsCache) {
+      _cache?.close();
+    }
+    super.dispose();
   }
 }
 
@@ -378,11 +599,18 @@ enum MediaType {
 }
 
 class MediaUploadResult {
+  /// Object PATH for the §7.2 private-bucket pipeline, or a public URL on
+  /// the legacy fallback. The UI never assumes which — always resolve
+  /// through [MediaService.downloadMedia].
   final String url;
   final String storagePath;
   final String fileName;
   final String mimeType;
   final int sizeBytes;
+
+  /// BlurHash string for images (null for voice/video/file). UI stores it
+  /// in `message.mediaThumbnailUrl` prefixed with `blurhash:`.
+  final String? blurHash;
 
   const MediaUploadResult({
     required this.url,
@@ -390,5 +618,6 @@ class MediaUploadResult {
     required this.fileName,
     required this.mimeType,
     required this.sizeBytes,
+    this.blurHash,
   });
 }

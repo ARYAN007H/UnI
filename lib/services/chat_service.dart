@@ -9,15 +9,20 @@ import '../config/supabase_config.dart';
 import '../models/models.dart';
 import 'local_cache_service.dart';
 import 'media_service.dart';
+import 'realtime_service.dart';
 
 /// Handles all chat-related data operations.
-/// Uses a local-first architecture: SQLite cache for instant reads,
-/// Supabase for sync and real-time.
+///
+/// Local-first (§7.1): the SQLite cache is mandatory — the UI renders from
+/// it; writes land locally first and re-sync via the outbox. Realtime
+/// (§7.3): all events ride the single shared couple channel via
+/// [RealtimeService.instance] — this service only routes the message stream.
 class ChatService extends ChangeNotifier {
   final SupabaseClient _client = Supabase.instance.client;
   static const _uuid = Uuid();
   static const int _pageSize = 50;
   LocalCacheService? _cache;
+  bool _ownsCache = false;
   MediaService? _mediaService;
 
   String? _coupleId;
@@ -31,14 +36,12 @@ class ChatService extends ChangeNotifier {
   String? _activeChannelId;
   String? get activeChannelId => _activeChannelId;
 
-  // ── Realtime subscriptions ──────────────────────────────────
-  RealtimeChannel? _messagesSubscription;
-  RealtimeChannel? _typingChannel;
+  // ── Realtime (single shared couple channel) ─────────────────
+  StreamSubscription<RealtimeMessageEvent>? _realtimeSub;
+  StreamSubscription<void>? _reconnectSub;
 
-  // ── Typing state ────────────────────────────────────────────
-  bool _partnerIsTyping = false;
-  bool get partnerIsTyping => _partnerIsTyping;
-  DateTime? _lastTypingEvent;
+  // ── Typing state (lives on RealtimeService now) ─────────────
+  bool get partnerIsTyping => RealtimeService.instance.partnerIsTyping;
 
   // ── Random prompts ──────────────────────────────────────────
   final Random _random = Random();
@@ -50,40 +53,105 @@ class ChatService extends ChangeNotifier {
   bool get channelsLoadError => _channelsLoadError;
 
   /// Initialize with couple ID and load channels.
-  /// Accepts an optional LocalCacheService for offline-first support.
-  Future<void> initialize(String coupleId, {LocalCacheService? cache, MediaService? mediaService}) async {
+  ///
+  /// The cache is mandatory: if the caller doesn't inject one (e.g. its init
+  /// failed in main), this service creates and owns its own instance rather
+  /// than degrading to network-only.
+  Future<void> initialize(String coupleId,
+      {LocalCacheService? cache, MediaService? mediaService}) async {
     _coupleId = coupleId;
-    _cache = cache;
     _mediaService = mediaService;
-    _currentPromptIndex = _random.nextInt(SupabaseConfig.conversationPrompts.length);
+
+    if (cache == null && _cache == null) {
+      final own = LocalCacheService();
+      try {
+        await own.initialize();
+        _cache = own;
+        _ownsCache = true;
+      } catch (e) {
+        debugPrint('[ChatService] self-healed cache init failed: $e');
+      }
+    } else if (cache != null) {
+      _cache = cache;
+    }
+
     await loadChannels();
-    // Flush any offline queue
-    _syncOfflineMessages();
-    // Start periodic sync timer
+    await drainOutbox();
+
+    // Route the shared couple stream into local state.
+    _realtimeSub?.cancel();
+    _realtimeSub = RealtimeService.instance.messageEvents
+        .listen(_onRealtimeMessageEvent);
+
+    // Reconnect = outbox drain + catch-up of the active channel.
+    _reconnectSub?.cancel();
+    _reconnectSub = RealtimeService.instance.connected.listen((_) async {
+      await drainOutbox();
+      final active = _activeChannelId;
+      if (active != null) await loadMessages(active);
+    });
+
+    // Keep retrying offline writes even if no reconnect event fires.
     _syncTimer?.cancel();
     _syncTimer = Timer.periodic(const Duration(seconds: 30), (_) {
-      _syncOfflineMessages();
+      drainOutbox();
     });
   }
 
-  /// Sync any messages that were saved locally but failed to send to Supabase.
-  Future<void> _syncOfflineMessages() async {
-    if (_cache == null) return;
-    
-    final unsynced = await _cache!.getUnsyncedMessages();
-    if (unsynced.isEmpty) return;
+  /// Drain the offline write queue.
+  ///
+  /// 1. Unsynced messages (messages.is_synced = 0) — inserted to the server.
+  /// 2. Outbox ops (message.edit / message.delete / read.mark), in order.
+  /// Both are idempotent: server events echo back and are deduped by id.
+  Future<void> drainOutbox() async {
+    final cache = _cache;
+    if (cache == null) return;
 
-    debugPrint('[ChatService] Syncing ${unsynced.length} offline messages...');
-    
+    final unsynced = await cache.getUnsyncedMessages();
     for (final msg in unsynced) {
       try {
         await _client.from('messages').insert(msg.toInsertJson());
-        await _cache!.markSynced(msg.id);
-        debugPrint('[ChatService] Synced message ${msg.id}');
+        await cache.markSynced(msg.id);
+        debugPrint('[ChatService] synced offline message ${msg.id}');
       } catch (e) {
-        debugPrint('[ChatService] Failed to sync message ${msg.id}: $e');
-        // Will retry on next init
+        debugPrint('[ChatService] offline message ${msg.id} still pending: $e');
+        break; // keep order; retry next cycle
       }
+    }
+
+    final ops = await cache.getPendingOutbox();
+    for (final op in ops) {
+      try {
+        await _applyOutboxOp(op['op'] as String, op['payload'] as String);
+        await cache.deleteOutboxEntry(op['id'] as int);
+      } catch (e) {
+        await cache.bumpOutboxAttempt(op['id'] as int, e.toString());
+        debugPrint('[ChatService] outbox op ${op['op']} pending: $e');
+        break; // preserve ordering
+      }
+    }
+  }
+
+  Future<void> _applyOutboxOp(String op, String payloadJson) async {
+    final payload = jsonDecode(payloadJson) as Map<String, dynamic>;
+    switch (op) {
+      case 'message.edit':
+        await _client.from('messages').update({
+          'content': payload['content'] as String,
+          'is_edited': true,
+        }).eq('id', payload['id'] as String);
+      case 'message.delete':
+        await _client
+            .from('messages')
+            .update({'is_deleted': true, 'content': null})
+            .eq('id', payload['id'] as String);
+      case 'read.mark':
+        await _client.rpc('batch_mark_read', params: {
+          'p_channel_id': payload['channel_id'] as String,
+          'p_user_id': payload['user_id'] as String,
+        });
+      default:
+        debugPrint('[ChatService] unknown outbox op: $op');
     }
   }
 
@@ -227,6 +295,7 @@ class ChatService extends ChangeNotifier {
       id: id,
       channelId: channelId,
       senderId: senderId,
+      coupleId: _coupleId,
       content: content,
       type: type,
       replyTo: replyTo,
@@ -291,14 +360,18 @@ class ChatService extends ChangeNotifier {
     final id = _uuid.v4();
     final now = DateTime.now();
 
-    // Optimistic message
+    // Optimistic message — media_url now stores the private-bucket object
+    // PATH (§7.2); the UI resolves it through MediaService, never by URL.
     final optimistic = Message(
       id: id,
       channelId: channelId,
       senderId: senderId,
+      coupleId: _coupleId,
       content: caption,
       type: type,
       mediaUrl: result.url,
+      mediaThumbnailUrl:
+          result.blurHash != null ? 'blurhash:${result.blurHash}' : null,
       mediaSizeBytes: result.sizeBytes,
       mediaDurationMs: durationMs,
       latitude: location?.latitude,
@@ -313,207 +386,161 @@ class ChatService extends ChangeNotifier {
     _messagesByChannel[channelId] = [optimistic, ...messages];
     notifyListeners();
 
+    // Local-first: persist before the server write (§7.1)
+    _cache?.saveMessage(optimistic, synced: false);
+
     try {
       await _client.from('messages').insert(optimistic.toInsertJson());
+      _cache?.markSynced(id);
     } catch (e) {
-      _messagesByChannel[channelId]?.removeWhere((m) => m.id == id);
-      notifyListeners();
+      // Stays in the outbox queue; drainOutbox() retries.
+      debugPrint('[ChatService] media message $id deferred to outbox: $e');
       rethrow;
     }
   }
 
-  /// Subscribe to real-time messages for a channel.
-  void subscribeToMessages(String channelId) {
-    _activeChannelId = channelId;
+  /// Route the shared couple stream into local state (§7.3).
+  ///
+  /// There is no per-channel socket anymore: all couple messages arrive on
+  /// one stream. Only the active channel's in-memory list is updated; other
+  /// channels still get everything persisted to the cache and reload from
+  /// there when opened.
+  void _onRealtimeMessageEvent(RealtimeMessageEvent event) {
+    final cache = _cache;
 
-    // Unsubscribe from previous
-    _messagesSubscription?.unsubscribe();
+    if (event.kind == RealtimeMessageEventKind.delete) {
+      final id = event.message.id;
+      for (final entry in _messagesByChannel.entries) {
+        final idx = entry.value.indexWhere((m) => m.id == id);
+        if (idx == -1) continue;
+        final old = entry.value[idx];
+        entry.value[idx] = Message(
+          id: old.id,
+          channelId: old.channelId,
+          senderId: old.senderId,
+          coupleId: old.coupleId,
+          content: null,
+          type: old.type,
+          isDeleted: true,
+          readBy: old.readBy,
+          createdAt: old.createdAt,
+          updatedAt: DateTime.now(),
+        );
+      }
+      cache?.deleteMessage(id);
+      notifyListeners();
+      return;
+    }
 
-    _messagesSubscription = _client
-        .channel('messages:$channelId')
-        .onPostgresChanges(
-          event: PostgresChangeEvent.insert,
-          schema: 'public',
-          table: 'messages',
-          filter: PostgresChangeFilter(
-            type: PostgresChangeFilterType.eq,
-            column: 'channel_id',
-            value: channelId,
-          ),
-          callback: (payload) {
-            final newMessage = Message.fromJson(payload.newRecord);
-            final messages = _messagesByChannel[channelId] ?? [];
+    final newMessage = event.message;
+    final channelId = newMessage.channelId;
 
-            // Save to local cache
-            _cache?.saveMessage(newMessage);
+    if (event.kind == RealtimeMessageEventKind.insert) {
+      cache?.saveMessage(newMessage);
+      if (newMessage.mediaUrl != null) {
+        _mediaService?.downloadMedia(newMessage.mediaUrl!);
+      }
+    }
 
-            // Auto-download media
-            if (newMessage.mediaUrl != null) {
-              _mediaService?.downloadMedia(newMessage.mediaUrl!);
-            }
+    final messages = _messagesByChannel[channelId];
+    if (messages == null) return; // not open in memory; cache has it
 
-            // Don't add if already exists (optimistic insert)
-            if (!messages.any((m) => m.id == newMessage.id)) {
-              _messagesByChannel[channelId] = [newMessage, ...messages];
-              notifyListeners();
-            } else {
-              // Replace optimistic with confirmed
-              final idx = messages.indexWhere((m) => m.id == newMessage.id);
-              if (idx != -1) {
-                messages[idx] = newMessage;
-                notifyListeners();
-              }
-            }
-          },
-        )
-        .onPostgresChanges(
-          event: PostgresChangeEvent.update,
-          schema: 'public',
-          table: 'messages',
-          filter: PostgresChangeFilter(
-            type: PostgresChangeFilterType.eq,
-            column: 'channel_id',
-            value: channelId,
-          ),
-          callback: (payload) {
-            final updated = Message.fromJson(payload.newRecord);
-            final messages = _messagesByChannel[channelId];
-            if (messages == null) return;
+    final idx = messages.indexWhere((m) => m.id == newMessage.id);
+    if (idx == -1) {
+      if (event.kind == RealtimeMessageEventKind.insert) {
+        _messagesByChannel[channelId] = [newMessage, ...messages];
+        notifyListeners();
+      }
+      return;
+    }
 
-            final idx = messages.indexWhere((m) => m.id == updated.id);
-            if (idx != -1) {
-              messages[idx] = updated;
-              _cache?.saveMessage(updated);
-              notifyListeners();
-            }
-          },
-        )
-        .onPostgresChanges(
-          event: PostgresChangeEvent.delete,
-          schema: 'public',
-          table: 'messages',
-          filter: PostgresChangeFilter(
-            type: PostgresChangeFilterType.eq,
-            column: 'channel_id',
-            value: channelId,
-          ),
-          callback: (payload) {
-            final deletedId = payload.oldRecord['id'] as String?;
-            if (deletedId == null) return;
-
-            final messages = _messagesByChannel[channelId];
-            if (messages == null) return;
-
-            final idx = messages.indexWhere((m) => m.id == deletedId);
-            if (idx != -1) {
-              // Mark as deleted locally rather than removing
-              messages[idx] = Message(
-                id: messages[idx].id,
-                channelId: messages[idx].channelId,
-                senderId: messages[idx].senderId,
-                content: null,
-                type: messages[idx].type,
-                isDeleted: true,
-                readBy: messages[idx].readBy,
-                createdAt: messages[idx].createdAt,
-                updatedAt: DateTime.now(),
-              );
-              _cache?.deleteMessage(deletedId);
-              notifyListeners();
-            }
-          },
-        )
-        .subscribe();
+    // Replace optimistic / apply update
+    messages[idx] = newMessage;
+    notifyListeners();
   }
 
-  /// Unsubscribe from current channel's messages.
-  void unsubscribeFromMessages() {
-    _messagesSubscription?.unsubscribe();
-    _messagesSubscription = null;
+  /// Point the UI at a channel. No socket churn — the shared couple stream
+  /// is already live; this only switches which in-memory list gets updated.
+  void setActiveChannel(String channelId) {
+    _activeChannelId = channelId;
+  }
+
+  void clearActiveChannel() {
     _activeChannelId = null;
   }
 
+  /// Deprecated v1 name — kept so existing call sites keep compiling.
+  /// No longer opens a dedicated socket (§7.3).
+  @Deprecated('Use setActiveChannel — the shared couple channel is always on')
+  void subscribeToMessages(String channelId) => setActiveChannel(channelId);
+
+  /// Deprecated v1 name — kept so existing call sites keep compiling.
+  @Deprecated('Use clearActiveChannel')
+  void unsubscribeFromMessages() => clearActiveChannel();
+
   // ── Typing Indicators ──────────────────────────────────────
 
-  /// Subscribe to typing events for this couple.
-  void subscribeToTyping(String coupleId, String myUserId) {
-    _typingChannel?.unsubscribe();
+  /// Deprecated v1 name — typing now rides the shared couple channel.
+  /// Kept so existing main.dart wiring keeps compiling (§7.3).
+  @Deprecated('Typing is handled internally by the shared couple channel')
+  void subscribeToTyping(String coupleId, String myUserId) {}
 
-    _typingChannel = _client
-        .channel('typing:$coupleId')
-        .onBroadcast(
-          event: 'typing',
-          callback: (payload) {
-            final senderId = payload['user_id'] as String?;
-            if (senderId != null && senderId != myUserId) {
-              _partnerIsTyping = true;
-              _lastTypingEvent = DateTime.now();
-              notifyListeners();
-
-              // Auto-clear after 3 seconds
-              Future.delayed(const Duration(seconds: 3), () {
-                if (_lastTypingEvent != null &&
-                    DateTime.now().difference(_lastTypingEvent!).inSeconds >= 3) {
-                  _partnerIsTyping = false;
-                  notifyListeners();
-                }
-              });
-            }
-          },
-        )
-        .subscribe();
-  }
-
-  /// Send a typing indicator.
+  /// Send a typing indicator over the shared couple channel.
   void sendTypingEvent(String coupleId, String userId) {
-    if (_typingChannel == null) return;
-    _typingChannel!.sendBroadcastMessage(
-      event: 'typing',
-      payload: {'user_id': userId},
-    );
+    RealtimeService.instance.sendTyping();
   }
 
   // ── Read Receipts ──────────────────────────────────────────
 
   /// Mark messages as read by the current user.
-  /// Uses a batch RPC call to avoid N+1 individual UPDATE queries.
+  /// Local-first (§7.1): cache + memory update immediately, server RPC best
+  /// effort, outbox op if the RPC fails.
   Future<void> markMessagesAsRead(String channelId, String userId) async {
+    // 1. Local apply
+    final cache = _cache;
+    if (cache != null) {
+      await cache.markMessagesRead(channelId, userId);
+    }
+
+    final messages = _messagesByChannel[channelId];
+    if (messages != null) {
+      for (var i = 0; i < messages.length; i++) {
+        if (!messages[i].readBy.contains(userId)) {
+          messages[i] = Message(
+            id: messages[i].id,
+            channelId: messages[i].channelId,
+            senderId: messages[i].senderId,
+            coupleId: messages[i].coupleId,
+            content: messages[i].content,
+            type: messages[i].type,
+            mediaUrl: messages[i].mediaUrl,
+            mediaThumbnailUrl: messages[i].mediaThumbnailUrl,
+            mediaDurationMs: messages[i].mediaDurationMs,
+            mediaSizeBytes: messages[i].mediaSizeBytes,
+            replyTo: messages[i].replyTo,
+            isEdited: messages[i].isEdited,
+            isDeleted: messages[i].isDeleted,
+            readBy: [...messages[i].readBy, userId],
+            createdAt: messages[i].createdAt,
+            updatedAt: messages[i].updatedAt,
+          );
+        }
+      }
+      notifyListeners();
+    }
+
+    // 2. Server sync (outbox on failure)
     try {
-      // Batch update via Postgres function
       await _client.rpc('batch_mark_read', params: {
         'p_channel_id': channelId,
         'p_user_id': userId,
       });
-
-      // Update local state
-      final messages = _messagesByChannel[channelId];
-      if (messages != null) {
-        for (var i = 0; i < messages.length; i++) {
-          if (!messages[i].readBy.contains(userId)) {
-            final updatedReadBy = [...messages[i].readBy, userId];
-            messages[i] = Message(
-              id: messages[i].id,
-              channelId: messages[i].channelId,
-              senderId: messages[i].senderId,
-              content: messages[i].content,
-              type: messages[i].type,
-              mediaUrl: messages[i].mediaUrl,
-              mediaThumbnailUrl: messages[i].mediaThumbnailUrl,
-              mediaDurationMs: messages[i].mediaDurationMs,
-              mediaSizeBytes: messages[i].mediaSizeBytes,
-              replyTo: messages[i].replyTo,
-              isEdited: messages[i].isEdited,
-              isDeleted: messages[i].isDeleted,
-              readBy: updatedReadBy,
-              createdAt: messages[i].createdAt,
-              updatedAt: messages[i].updatedAt,
-            );
-          }
-        }
-        notifyListeners();
-      }
     } catch (e) {
-      debugPrint('Error marking messages as read: $e');
+      debugPrint('[ChatService] read-mark deferred to outbox: $e');
+      await _cache?.enqueueOutbox('read.mark', {
+        'channel_id': channelId,
+        'user_id': userId,
+      });
     }
   }
 
@@ -536,67 +563,100 @@ class ChatService extends ChangeNotifier {
     await loadChannels();
   }
 
-  /// Delete a message.
+  /// Delete a message. Local-first (§7.1): tombstone locally now, server
+  /// update best effort, outbox op on failure. The realtime update event
+  /// that echoes back is deduped by id.
   Future<void> deleteMessage(String messageId, String channelId) async {
+    // 1. Local apply
+    final cache = _cache;
+    if (cache != null) {
+      await cache.deleteMessage(messageId);
+    }
+
+    final messages = _messagesByChannel[channelId];
+    if (messages != null) {
+      final idx = messages.indexWhere((m) => m.id == messageId);
+      if (idx != -1) {
+        final old = messages[idx];
+        messages[idx] = Message(
+          id: old.id,
+          channelId: old.channelId,
+          senderId: old.senderId,
+          coupleId: old.coupleId,
+          content: null,
+          type: old.type,
+          isDeleted: true,
+          readBy: old.readBy,
+          createdAt: old.createdAt,
+          updatedAt: DateTime.now(),
+        );
+        notifyListeners();
+      }
+    }
+
+    // 2. Server sync
     try {
       await _client
           .from('messages')
           .update({'is_deleted': true, 'content': null})
           .eq('id', messageId);
-
-      final messages = _messagesByChannel[channelId];
-      if (messages != null) {
-        final idx = messages.indexWhere((m) => m.id == messageId);
-        if (idx != -1) {
-          messages[idx] = Message(
-            id: messages[idx].id,
-            channelId: messages[idx].channelId,
-            senderId: messages[idx].senderId,
-            content: null,
-            type: messages[idx].type,
-            isDeleted: true,
-            readBy: messages[idx].readBy,
-            createdAt: messages[idx].createdAt,
-            updatedAt: DateTime.now(),
-          );
-          notifyListeners();
-        }
-      }
     } catch (e) {
-      debugPrint('Error deleting message: $e');
+      debugPrint('[ChatService] delete deferred to outbox: $e');
+      await _cache?.enqueueOutbox('message.delete', {'id': messageId});
     }
   }
 
-  /// Edit a message.
+  /// Edit a message. Local-first (§7.1), outbox on server failure.
   Future<void> editMessage(String messageId, String channelId, String newContent) async {
+    // 1. Local apply
+    final cache = _cache;
+    if (cache != null) {
+      final cached = await cache.getMessages(channelId, limit: 10000);
+      final cachedMsg = cached.where((m) => m.id == messageId).firstOrNull;
+      if (cachedMsg != null) {
+        await cache.saveMessage(cachedMsg.copyWithContent(newContent));
+      }
+    }
+
+    final messages = _messagesByChannel[channelId];
+    if (messages != null) {
+      final idx = messages.indexWhere((m) => m.id == messageId);
+      if (idx != -1) {
+        final old = messages[idx];
+        messages[idx] = Message(
+          id: old.id,
+          channelId: old.channelId,
+          senderId: old.senderId,
+          coupleId: old.coupleId,
+          content: newContent,
+          type: old.type,
+          mediaUrl: old.mediaUrl,
+          mediaThumbnailUrl: old.mediaThumbnailUrl,
+          mediaDurationMs: old.mediaDurationMs,
+          mediaSizeBytes: old.mediaSizeBytes,
+          latitude: old.latitude,
+          longitude: old.longitude,
+          replyTo: old.replyTo,
+          isEdited: true,
+          isDeleted: false,
+          readBy: old.readBy,
+          createdAt: old.createdAt,
+          updatedAt: DateTime.now(),
+        );
+        notifyListeners();
+      }
+    }
+
+    // 2. Server sync
     try {
       await _client.from('messages').update({
         'content': newContent,
         'is_edited': true,
-        'updated_at': DateTime.now().toIso8601String(),
       }).eq('id', messageId);
-
-      final messages = _messagesByChannel[channelId];
-      if (messages != null) {
-        final idx = messages.indexWhere((m) => m.id == messageId);
-        if (idx != -1) {
-          messages[idx] = Message(
-            id: messages[idx].id,
-            channelId: messages[idx].channelId,
-            senderId: messages[idx].senderId,
-            content: newContent,
-            type: messages[idx].type,
-            isEdited: true,
-            isDeleted: false,
-            readBy: messages[idx].readBy,
-            createdAt: messages[idx].createdAt,
-            updatedAt: DateTime.now(),
-          );
-          notifyListeners();
-        }
-      }
     } catch (e) {
-      debugPrint('Error editing message: $e');
+      debugPrint('[ChatService] edit deferred to outbox: $e');
+      await _cache?.enqueueOutbox(
+          'message.edit', {'id': messageId, 'content': newContent});
     }
   }
 
@@ -694,8 +754,11 @@ class ChatService extends ChangeNotifier {
   @override
   void dispose() {
     _syncTimer?.cancel();
-    _messagesSubscription?.unsubscribe();
-    _typingChannel?.unsubscribe();
+    _realtimeSub?.cancel();
+    _reconnectSub?.cancel();
+    if (_ownsCache) {
+      _cache?.close();
+    }
     super.dispose();
   }
 }

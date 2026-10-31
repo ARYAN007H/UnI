@@ -1,0 +1,51 @@
+name: Beta Release (APK)
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+
+# Sideloading channel for the closed beta (plan §8 Phase 4):
+# installable APKs via GitHub Releases — no store account needed pre-18.
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      # .env is a declared Flutter asset but gitignored — CI builds need a
+      # placeholder (real secrets only matter at runtime; beta builds use the
+      # fallback legacy path until R2_* secrets exist).
+      - name: Create placeholder .env
+        run: |
+          echo "SUPABASE_URL=${{ secrets.SUPABASE_URL }}" > .env
+          echo "SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}" >> .env
+
+      - run: flutter pub get
+      - run: flutter test
+      - run: flutter analyze --fatal-warnings
+
+      - name: Build release APK
+        run: flutter build apk --release
+
+      - name: Rename APK
+        run: cp build/app/outputs/flutter-apk/app-release.apk uandi-beta.apk
+
+      - name: Upload artifact (every run)
+        uses: actions/upload-artifact@v4
+        with:
+          name: uandi-beta-apk
+          path: uandi-beta.apk
+
+      - name: Attach to GitHub Release (tag pushes only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: uandi-beta.apk
+          generate_release_notes: true

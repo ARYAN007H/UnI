@@ -248,6 +248,8 @@ class Message {
   final String id;
   final String channelId;
   final String senderId;
+  // Server-derived on insert (migration 008); client value is informational.
+  final String? coupleId;
   final String? content;
   final MessageType type;
   final String? mediaUrl;
@@ -269,6 +271,7 @@ class Message {
     required this.id,
     required this.channelId,
     required this.senderId,
+    this.coupleId,
     this.content,
     this.type = MessageType.text,
     this.mediaUrl,
@@ -291,6 +294,7 @@ class Message {
       id: json['id'] as String,
       channelId: json['channel_id'] as String,
       senderId: json['sender_id'] as String,
+      coupleId: json['couple_id'] as String?,
       content: json['content'] as String?,
       type: _parseMessageType(json['type'] as String?),
       mediaUrl: json['media_url'] as String?,
@@ -312,6 +316,7 @@ class Message {
         'id': id,
         'channel_id': channelId,
         'sender_id': senderId,
+        'couple_id': coupleId,
         'content': content,
         'type': type.name,
         'media_url': mediaUrl,
@@ -324,6 +329,28 @@ class Message {
       };
 
   bool isReadBy(String userId) => readBy.contains(userId);
+
+  /// Local-first edit helper: same message with new content, marked edited.
+  Message copyWithContent(String newContent) => Message(
+        id: id,
+        channelId: channelId,
+        senderId: senderId,
+        coupleId: coupleId,
+        content: newContent,
+        type: type,
+        mediaUrl: mediaUrl,
+        mediaThumbnailUrl: mediaThumbnailUrl,
+        mediaDurationMs: mediaDurationMs,
+        mediaSizeBytes: mediaSizeBytes,
+        latitude: latitude,
+        longitude: longitude,
+        replyTo: replyTo,
+        isEdited: true,
+        isDeleted: isDeleted,
+        readBy: readBy,
+        createdAt: createdAt,
+        updatedAt: DateTime.now(),
+      );
 
   static MessageType _parseMessageType(String? type) {
     switch (type) {
