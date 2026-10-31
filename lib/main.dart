@@ -65,6 +65,9 @@ Future<void> main() async {
     await localCache.initialize();
   } catch (e) {
     debugPrint('[INIT] LocalCache init failed: $e');
+    // An uninitialized instance poisons every downstream call — hand over null
+    // so services self-heal or degrade to network-only (plan §7.1).
+    localCache = null;
   }
 
   final prefs = await SharedPreferences.getInstance();

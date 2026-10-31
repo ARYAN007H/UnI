@@ -25,7 +25,19 @@ Dormancy is the category's #1 documented killer; this log is the antidote.
     and screens under construction.
 - 45/45 tests passing, `flutter analyze` clean.
 
-**Next:** Agent 3 completes screens → device install + smoke test on Android → legacy
-screens deleted → release build. Store launch happens the week we turn 18.
+- Agent 3 completed screens + main.dart wiring; Agent 2 shipped compliance backend
+  (account deletion, report/block) — 50/50 tests green.
+- Legacy UI (`lib/screens/`, `lib/widgets/`, old theme) deleted — zero importers.
+- **First live two-device test: PASSED.** Phone + browser paired via invite code,
+  encryption armed with recovery escrow, presence live, chat messages flowing
+  both directions, verified in Supabase.
+- Debugging marathon (all fixed): missing lat/long/media columns in messages
+  (migration 013), missing `batch_mark_read` RPC, channels never seeded for new
+  couples (migration 012 + DB trigger), realtime publication missing daily/key
+  tables, a poisoned half-initialized cache blocking the whole init chain, and
+  the chat never triggering its history fetch.
+
+**Next:** clean up outbox retry-duplicates, web sqflite worker, orphan couples.
+Store launch happens the week we turn 18.
 
 **HUMAN checklist before beta:** run migrations `008`, `009`, `010` in the Supabase SQL editor.

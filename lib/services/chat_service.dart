@@ -30,8 +30,21 @@ class ChatService extends ChangeNotifier {
   List<Channel> get channels => _channels;
 
   final Map<String, List<Message>> _messagesByChannel = {};
-  List<Message> messagesForChannel(String channelId) =>
-      _messagesByChannel[channelId] ?? [];
+  final Set<String> _fetchingChannels = {};
+
+  /// Local-first read: returns what's cached; if a channel has nothing yet
+  /// (fresh install, first open), kicks off the server fetch and the UI
+  /// rebuilds when it lands — no caller has to remember to load first.
+  List<Message> messagesForChannel(String channelId) {
+    final cached = _messagesByChannel[channelId];
+    if ((cached == null || cached.isEmpty) &&
+        !_fetchingChannels.contains(channelId)) {
+      _fetchingChannels.add(channelId);
+      loadMessages(channelId)
+          .whenComplete(() => _fetchingChannels.remove(channelId));
+    }
+    return cached ?? [];
+  }
 
   String? _activeChannelId;
   String? get activeChannelId => _activeChannelId;
@@ -59,13 +72,16 @@ class ChatService extends ChangeNotifier {
   /// than degrading to network-only.
   Future<void> initialize(String coupleId,
       {LocalCacheService? cache, MediaService? mediaService}) async {
+    debugPrint('[ChatService] initialize enter couple=$coupleId cacheNull=${cache == null}');
     _coupleId = coupleId;
     _mediaService = mediaService;
 
     if (cache == null && _cache == null) {
       final own = LocalCacheService();
       try {
-        await own.initialize();
+        // A dead/mismatched sqflite web worker can hang openDatabase forever —
+        // time-box it so loadChannels and realtime still come up.
+        await own.initialize().timeout(const Duration(seconds: 6));
         _cache = own;
         _ownsCache = true;
       } catch (e) {
@@ -157,14 +173,20 @@ class ChatService extends ChangeNotifier {
 
   /// Fetch channels — cache-first, then sync from server.
   Future<void> loadChannels() async {
+    debugPrint('[ChatService] loadChannels enter couple=$_coupleId');
     if (_coupleId == null) return;
 
-    // 1. Load from cache instantly
+    // 1. Load from cache instantly (a broken cache must never block the
+    //    server sync below — degrade to network-only).
     if (_cache != null) {
-      final cached = await _cache!.getChannels(_coupleId!);
-      if (cached.isNotEmpty) {
-        _channels = cached;
-        notifyListeners();
+      try {
+        final cached = await _cache!.getChannels(_coupleId!);
+        if (cached.isNotEmpty) {
+          _channels = cached;
+          notifyListeners();
+        }
+      } catch (e) {
+        debugPrint('[ChatService] channel cache read failed (network-only): $e');
       }
     }
 
@@ -462,7 +484,11 @@ class ChatService extends ChangeNotifier {
   /// Point the UI at a channel. No socket churn — the shared couple stream
   /// is already live; this only switches which in-memory list gets updated.
   void setActiveChannel(String channelId) {
+    if (_activeChannelId == channelId) return;
     _activeChannelId = channelId;
+    // Opening a screen must fetch its history — realtime only covers NEW
+    // events, and reconnect catch-up only fires on reconnects.
+    loadMessages(channelId);
   }
 
   void clearActiveChannel() {

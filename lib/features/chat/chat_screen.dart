@@ -331,15 +331,15 @@ class _ChatScreenState extends State<ChatScreen> {
         // the partner's content — server-enforced via agent2's policies.
         if (!mine && !m.isDeleted) ...[
           _actionTile(context, Icons.flag_outlined, 'Report message',
-              () => _reportDialog(context, m)),
+              () => _reportDialog(m)),
           _actionTile(context, Icons.block_rounded, 'Block partner',
-              () => _blockConfirm(context), destructive: true),
+              () => _blockConfirm(), destructive: true),
         ],
       ],
     );
   }
 
-  Future<void> _reportDialog(BuildContext context, Message m) async {
+  Future<void> _reportDialog(Message m) async {
     Navigator.of(context).pop();
     if (!mounted) return;
     final reason = await showAppSheet<ReportReason>(
@@ -375,7 +375,7 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  Future<void> _blockConfirm(BuildContext context) async {
+  Future<void> _blockConfirm() async {
     Navigator.of(context).pop();
     if (!mounted) return;
     final confirmed = await showDialog<bool>(

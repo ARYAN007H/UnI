@@ -56,3 +56,6 @@ flutter/
 
 # Agent coordination scratch (ephemeral)
 agentchat.md
+
+# Supabase CLI local state (link session, branch config)
+supabase/.temp/
